@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # =========================================================
 # IDE / Editor
 # =========================================================
@@ -14,10 +15,21 @@ Thumbs.db
 # =========================================================
 # Environment / Secrets
 # =========================================================
+=======
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Backend
+backend/target/
+
+# Environment files
+>>>>>>> 7d3cb1e4ee1eac82ff0351fd9f421658328b2945
 .env
 .env.*
 !.env.example
 
+<<<<<<< HEAD
 *.pem
 *.key
 *.crt
@@ -74,3 +86,17 @@ terraform.rc
 # =========================================================
 *.tmp
 *.temp
+=======
+# Spring Boot local config
+**/application-local.properties
+**/application-local.yml
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+>>>>>>> 7d3cb1e4ee1eac82ff0351fd9f421658328b2945
