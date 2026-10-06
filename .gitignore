@@ -61,6 +61,8 @@ backend/target/
 *.tfstate.*
 crash.log
 crash.*.log
+**/.terraform/
+*.exe
 
 # Terraform variable files may contain secrets
 *.tfvars
