@@ -254,6 +254,11 @@ resource "aws_eks_cluster" "main" {
   role_arn = aws_iam_role.eks_cluster.arn
   version  = "1.33"
 
+  access_config {
+  authentication_mode = "API_AND_CONFIG_MAP"
+  bootstrap_cluster_creator_admin_permissions = true
+}
+
   vpc_config {
     subnet_ids = [
       aws_subnet.private[0].id,
@@ -586,6 +591,18 @@ resource "aws_vpc_security_group_egress_rule" "jenkins_all_egress" {
   ip_protocol = "-1"
 }
 
+resource "aws_vpc_security_group_ingress_rule" "eks_api_from_jenkins" {
+  security_group_id = aws_security_group.eks_cluster.id
+
+  referenced_security_group_id = aws_security_group.jenkins.id
+
+  from_port   = 443
+  to_port     = 443
+  ip_protocol = "tcp"
+
+  description = "Allow Jenkins to access EKS Kubernetes API"
+}
+
 # ============================================================
 # Jenkins IAM Role
 # ============================================================
@@ -773,3 +790,23 @@ resource "aws_instance" "jenkins" {
   }
 }
 
+resource "aws_eks_access_entry" "jenkins" {
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = aws_iam_role.jenkins.arn
+  type          = "STANDARD"
+}
+
+resource "aws_eks_access_policy_association" "jenkins" {
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = aws_iam_role.jenkins.arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+
+  access_scope {
+    type       = "namespace"
+    namespaces = ["order-inventory"]
+  }
+
+  depends_on = [
+    aws_eks_access_entry.jenkins
+  ]
+}
