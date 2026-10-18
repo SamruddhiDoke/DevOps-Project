@@ -101,7 +101,7 @@ declarative linter.
 | Dependencies (`pom.xml`, `package-lock.json`) | Trivy 0.76.0 fs | 0 vulnerabilities |
 | IaC misconfiguration | Trivy config | 0 beyond documented exceptions |
 | Secrets in the working tree / each commit | gitleaks 8.28, Trivy secret scanner | clean |
-| Secrets in **current public history** | gitleaks | 6 findings (one destroyed RDS password) — remediation prepared, needs force-push approval |
+| Secrets in **public GitHub history** | gitleaks on a fresh clone after the 2026-10-19 push | clean (0 occurrences of the destroyed RDS password); old SHAs need a GitHub Support purge |
 | Code quality | SonarQube 26.10 | quality gate PASSED (backend, frontend) |
 
 Before remediation the images had 11 (backend) and 68 (frontend) HIGH/CRITICAL findings, including a
@@ -112,7 +112,7 @@ Tomcat/Jackson and `apk upgrade`.
 
 Details and resource inventory: [AWS_DEPLOYMENT.md](AWS_DEPLOYMENT.md).
 
-### Jenkins on EC2 (configured by Ansible, source = rewritten history via the host's Git mirror)
+### Jenkins on EC2 (configured by Ansible; builds #1–#6 from the host's Git mirror, #7+ from GitHub)
 
 | Build | Result | Cause / notes |
 |---|---|---|
@@ -120,6 +120,10 @@ Details and resource inventory: [AWS_DEPLOYMENT.md](AWS_DEPLOYMENT.md).
 | #2 | FAILURE at Deploy (exit 126) | all CI stages passed and images were pushed (`2-06f7acc`); scripts lacked the executable bit in Git (Windows) → `git update-index --chmod=+x` |
 | #3 | FAILURE at Dependency & IaC Scan | **gate worked**: 5 HIGH findings in the new `k8s/logging/elk.yaml` → fixed (read-only root fs, non-root ES/Kibana, path-scoped Filebeat exception) |
 | **#4** | **SUCCESS** (6m15s) | commit `bf7450d`: 29 backend tests, frontend lint/tests/build, SonarQube gate PASSED (backend + frontend), Trivy dependency/IaC/secret/image gates, Helm lint, images `4-bf7450d` pushed to ECR, Helm deploy (2/2 + 2/2), image-tag verification, in-cluster readiness, 8 checks through the ALB |
+| #5 | SUCCESS | commit `eaf6380` (mirror), images `5-eaf6380` |
+| #6 | FAILURE at Deploy ("context canceled") | Jenkins was restarted mid-deploy by the Ansible run that switched the job to GitHub; the pipeline rolled back to revision 8 automatically |
+| **#7** | **SUCCESS** | first build **cloned from GitHub** (`ca5c22c`), manual trigger; all gates, `7-ca5c22c` deployed ([evidence](evidence/jenkins-github-build-7-2026-10-19.txt)) |
+| **#8** | **SUCCESS** | **started by SCM polling of GitHub** after a push (`18a2bc6`); `8-18a2bc6` deployed, 8 ALB checks ([evidence](evidence/jenkins-github-poll-build-8-2026-10-19.txt)) |
 
 ### Application through the public ALB
 
@@ -148,8 +152,8 @@ Evidence: [aws-zero-downtime](evidence/aws-zero-downtime-2026-10-19.txt), [aws-r
 
 ## Not yet verified
 
-1. **GitHub-triggered pipeline**: Jenkins builds from the host's Git mirror because GitHub still holds the
-   pre-remediation history; switching the job to GitHub requires the approved force-push first.
+1. GitHub **webhook** trigger: not configured (Jenkins is restricted to the admin /32); GitHub-triggered builds
+   use SCM polling every 5 minutes, which is verified (build #8).
 2. Budget notification at a real threshold (requires actual spend).
 3. Email delivery of alerts (no email subscribed; delivery verified through the SQS audit subscription).
 4. HTTPS (no domain/ACM certificate in this project).

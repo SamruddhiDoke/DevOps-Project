@@ -1,0 +1,15 @@
+# Jenkins build #8 — triggered automatically by SCM polling of GitHub after the push of 18a2bc6 (2026-10-19, times UTC)
+# Excerpt of the console log; full log on the Jenkins host.
+Started by an SCM change
+Checking out git https://github.com/SamruddhiDoke/DevOps-Project.git into /var/lib/jenkins/workspace/order-inventory@script/b792cb2984f2399fc0a545583f4526cf7882280ba7d7989b8d53543eb5b9dce9 to read Jenkinsfile
+Checking out Revision 18a2bc6560aac6fbe299127282297bb4e97811a2 (refs/remotes/origin/main)
+Commit message: "feat(ops): one-command suspend/resume for evaluation; Jenkins builds from GitHub"
+[2026-10-18T21:05:12.866Z] [INFO] Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+[2026-10-18T21:06:21.060Z] [INFO] QUALITY GATE STATUS: PASSED - View details on http://127.0.0.1:9000/dashboard?id=order-inventory-backend
+[2026-10-18T21:07:06.456Z] 21:07:04.456 INFO  QUALITY GATE STATUS: PASSED - View details on http://127.0.0.1:9000/dashboard?id=order-inventory-frontend
+[2026-10-18T21:11:20.763Z] Release healthy:
+[2026-10-18T21:11:21.675Z] backend    2       038215676861.dkr.ecr.ap-south-1.amazonaws.com/order-inventory-backend:8-18a2bc6
+[2026-10-18T21:11:21.675Z] frontend   2       038215676861.dkr.ecr.ap-south-1.amazonaws.com/order-inventory-frontend:8-18a2bc6
+[2026-10-18T21:11:32.168Z] {"database":"UP","status":"UP"}
+[2026-10-18T21:11:36.436Z] All 8 read-only checks passed against http://k8s-orderinv-orderinv-00335110a2-1122521152.ap-south-1.elb.amazonaws.com
+Finished: SUCCESS

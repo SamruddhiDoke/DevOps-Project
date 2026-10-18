@@ -285,9 +285,8 @@ rotation procedures: [docs/SECURITY.md](docs/SECURITY.md).
 
 ## 15. Known limitations and work not yet verified
 
-- **Jenkins builds from a Git mirror on the Jenkins host**, not GitHub, until the rewritten (secret-free) history
-  is force-pushed to GitHub — that push awaits the repository owner's approval. The GitHub-triggered flow is
-  therefore not yet verified.
+- Jenkins detects GitHub pushes by **polling every 5 minutes** (verified, build #8); a push webhook is not
+  configured because Jenkins is reachable only from the admin /32.
 - HTTP only (no domain/ACM certificate); demo login page without authentication.
 - The backend uses the RDS master user; a dedicated least-privilege DB user is recommended.
 - Single NAT gateway (not AZ-redundant) to limit cost; SonarQube runs on the Jenkins host (single instance, no HA).

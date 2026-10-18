@@ -22,7 +22,7 @@ stores it in the manifest (`application.currentUrl`); it can also be read with
 `…-1122521152.ap-south-1.elb.amazonaws.com` (resume test 2026-10-19).
 
 Deployed release: the immutable tag recorded in the manifest (`application.lastKnownGoodTag`), built by
-Jenkins from GitHub (`7-ca5c22c` = build #7, commit `ca5c22c`).
+Jenkins from GitHub (`8-18a2bc6` = build #8, commit `18a2bc6`, at the 2026-10-19 suspend).
 
 ## Architecture as deployed
 
@@ -102,7 +102,8 @@ RDS restarts itself 7 days after a stop (date in the manifest); re-run the suspe
 | Alert delivery | `set-alarm-state` on `order-inventory-rds-cpu-high` → SNS (KMS) → SQS message received with the expected alarm/state/metric; alarm restored to OK |
 | Budget | configured: $350, ACTUAL 80 % and FORECASTED 100 % → SNS (threshold not reached, so not triggered) |
 | Jenkins from GitHub | build #7 (manual trigger) cloned `github.com/SamruddhiDoke/DevOps-Project` @ `ca5c22c`: all gates, ECR push `7-ca5c22c`, Helm deploy, 8 ALB checks — SUCCESS |
-| Suspend | `suspend-evaluation.sh` exit 0 in 23 min (17 min of it EKS draining 2 nodes): ALB + target groups gone, 0 nodes, Jenkins/RDS stopped; independently re-checked; `terraform plan` while suspended → no infrastructure changes |
+| GitHub-triggered build | push of `18a2bc6` → Jenkins SCM poll started build #8 by itself ("Started by an SCM change"), cloned from GitHub: 29 tests, both quality gates, `8-18a2bc6` deployed to EKS, 8 ALB checks — SUCCESS ([evidence](evidence/jenkins-github-poll-build-8-2026-10-19.txt)) |
+| Suspend | `suspend-evaluation.sh` exit 0 in 23 min (17 min of it EKS draining 2 nodes): ALB + target groups gone, 0 nodes, Jenkins/RDS stopped; independently re-checked; `terraform plan` while suspended → no resource changes (only the Jenkins IP outputs refresh) |
 | Resume | `resume-evaluation.sh` exit 0 in **9 min 14 s**: 2 nodes Ready, add-ons ready, RDS available, Helm rev 13 `7-ca5c22c` 2+2, new ALB + healthy targets, Flyway "up to date", 20/20 read/write smoke checks, 4 ALB alarms, Kibana available, Jenkins `/login` 200 |
 | ELK | ES/Kibana/Filebeat Ready, read-only root filesystems; failed order found by `requestId` with Kubernetes metadata; 7-day ILM; DB password in 0 documents ([evidence](evidence/elk-eks-2026-10-19.txt)) |
 
@@ -111,7 +112,8 @@ RDS restarts itself 7 days after a stop (date in the manifest); re-run the suspe
 GitHub `https://github.com/SamruddhiDoke/DevOps-Project.git` (`main`, rewritten history pushed
 2026-10-19). The job is configured by Ansible/JCasC (`JENKINS_REPO_URL=… ./ansible/run-playbook.sh`) and
 **polls GitHub every 5 minutes**; build #7 cloned from GitHub and passed every stage including the EKS
-deploy ([evidence](evidence/jenkins-github-build-7-2026-10-19.txt)). A push webhook is not configured
+deploy ([evidence](evidence/jenkins-github-build-7-2026-10-19.txt)); build #8 was started by the poll
+after a push and deployed `8-18a2bc6` ([evidence](evidence/jenkins-github-poll-build-8-2026-10-19.txt)). A push webhook is not configured
 (Jenkins port 8080 is restricted to the admin /32; GitHub's hook ranges would have to be allowed).
 Consequence: after a resume, Jenkins builds and deploys any commit pushed while it was stopped
 (zero-downtime rolling update). The Jenkins public IP changes on every start (no Elastic IP); run

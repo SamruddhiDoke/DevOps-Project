@@ -12,7 +12,7 @@
     "cluster": "order-inventory-eks",
     "nodegroup": "order-inventory-nodes",
     "desiredSize": 2,
-    "minSize": 0,
+    "minSize": 1,
     "maxSize": 3
   },
   "rds": {
@@ -22,20 +22,19 @@
   "jenkins": {
     "instanceId": "i-03288b455e674765e",
     "adminSecret": "order-inventory/jenkins-admin",
-    "repo": "https://github.com/SamruddhiDoke/DevOps-Project.git",
-    "publicIpAtResume": "13.201.0.237"
+    "repo": "https://github.com/SamruddhiDoke/DevOps-Project.git"
   },
   "application": {
     "namespace": "order-inventory",
     "helmRelease": "order-inventory",
     "helmChart": "helm/order-inventory",
-    "helmRevisionAtSuspend": 11,
+    "helmRevisionAtSuspend": 14,
     "registry": "038215676861.dkr.ecr.ap-south-1.amazonaws.com",
     "repositories": [
       "order-inventory-backend",
       "order-inventory-frontend"
     ],
-    "lastKnownGoodTag": "7-ca5c22c",
+    "lastKnownGoodTag": "8-18a2bc6",
     "replicas": {
       "backend": 2,
       "frontend": 2
@@ -45,8 +44,7 @@
       "className": "alb",
       "recreatedBy": "helm (ingress.enabled=true, chart default)"
     },
-    "albHostnameAtSuspend": "k8s-orderinv-orderinv-00335110a2-2009364498.ap-south-1.elb.amazonaws.com",
-    "currentUrl": "http://k8s-orderinv-orderinv-00335110a2-1122521152.ap-south-1.elb.amazonaws.com"
+    "albHostnameAtSuspend": "k8s-orderinv-orderinv-00335110a2-1122521152.ap-south-1.elb.amazonaws.com"
   },
   "logging": {
     "namespace": "logging",
@@ -56,6 +54,6 @@
       "kibana": 1
     }
   },
-  "suspendedAt": "2026-10-18T20:27:06.525Z",
-  "resumedAt": "2026-10-18T21:02:06.511Z"
+  "suspendedAt": "2026-10-18T21:13:08.124Z",
+  "rdsAutoRestartAfter": "2026-10-25T21:13:08.130Z"
 }
