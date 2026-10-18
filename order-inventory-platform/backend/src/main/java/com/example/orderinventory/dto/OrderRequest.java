@@ -10,9 +10,9 @@ public class OrderRequest {
     @NotNull(message = "User ID is required")
     private Long userId;
 
+    // Element-level @Valid (container-level @Valid is deprecated in Hibernate Validator 9)
     @NotEmpty(message = "Order must contain at least one item")
-    @Valid
-    private List<OrderItemRequest> items;
+    private List<@Valid OrderItemRequest> items;
 
     public OrderRequest() {
     }

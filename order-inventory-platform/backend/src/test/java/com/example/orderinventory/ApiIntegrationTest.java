@@ -219,6 +219,20 @@ class ApiIntegrationTest {
     }
 
     @Test
+    void validatesEachOrderLine() throws Exception {
+        long userId = createUser("lines-validation@example.com");
+        long productId = createProduct("Validated", "1.00", 5);
+
+        JsonNode error = postJson("/api/orders",
+                "{\"userId\":" + userId + ",\"items\":[{\"productId\":" + productId + ",\"quantity\":0},"
+                        + "{\"quantity\":1}]}", 400);
+
+        assertThat(error.get("details").toString())
+                .contains("items[0].quantity", "items[1].productId");
+        assertThat(stockOf(productId)).isEqualTo(5);
+    }
+
+    @Test
     void rejectsOrdersForUnknownUserOrProduct() throws Exception {
         long userId = createUser("known@example.com");
         long productId = createProduct("Known", "1.00", 1);
