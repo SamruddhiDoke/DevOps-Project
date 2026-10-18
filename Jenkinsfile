@@ -103,6 +103,7 @@ pipeline {
                     // allowEmptyResults: false -> a run that executes zero tests is a failure
                     junit(testResults: "${APP_DIR}/backend/target/surefire-reports/*.xml", allowEmptyResults: false)
                     recordCoverage(tools: [[parser: 'JACOCO', pattern: "${APP_DIR}/backend/target/site/jacoco/jacoco.xml"]],
+                                   sourceDirectories: [[path: "${APP_DIR}/backend/src/main/java"]],
                                    id: 'backend-coverage', name: 'Backend coverage')
                     sh 'cp -r ${APP_DIR}/backend/target/site/jacoco "${REPORTS}/backend-coverage" 2>/dev/null || true'
                 }
