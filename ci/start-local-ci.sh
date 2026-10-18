@@ -27,7 +27,9 @@ curl -sf "$SONAR_URL/api/system/status" | grep -q '"status":"UP"' || { echo "Son
 # Replace the default admin/admin password on first start
 if [ -z "$(env_get SONAR_ADMIN_PASSWORD)" ]; then
   NEW_PW="$(rand)"
-  curl -sf -u admin:admin -X POST "$SONAR_URL/api/users/change_password" \
+  # SonarQube's documented factory default; it is replaced by a generated password right here.
+  FACTORY_CREDS="admin:admin" # gitleaks:allow
+  curl -sf -u "$FACTORY_CREDS" -X POST "$SONAR_URL/api/users/change_password" \
     --data-urlencode login=admin --data-urlencode previousPassword=admin --data-urlencode "password=$NEW_PW" \
     || { echo "Could not change the SonarQube admin password (already changed? set SONAR_ADMIN_PASSWORD in ci/.env)" >&2; exit 1; }
   env_set SONAR_ADMIN_PASSWORD "$NEW_PW"
@@ -35,7 +37,8 @@ fi
 
 # Analysis token for Jenkins
 if [ -z "$(env_get SONAR_TOKEN)" ]; then
-  TOKEN="$(curl -sf -u "admin:$(env_get SONAR_ADMIN_PASSWORD)" -X POST "$SONAR_URL/api/user_tokens/generate" \
+  ADMIN_CREDS="admin:$(env_get SONAR_ADMIN_PASSWORD)"   # read from ci/.env at run time
+  TOKEN="$(curl -sf -u "$ADMIN_CREDS" -X POST "$SONAR_URL/api/user_tokens/generate" \
     --data-urlencode "name=jenkins-$(date +%s)" --data-urlencode type=GLOBAL_ANALYSIS_TOKEN | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).token||""))')"
   [ -n "$TOKEN" ] && [ "$TOKEN" != null ] || { echo "Could not create a SonarQube token" >&2; exit 1; }
   env_set SONAR_TOKEN "$TOKEN"
