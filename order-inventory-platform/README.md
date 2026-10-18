@@ -1,6 +1,6 @@
 # Order & Inventory Management System — Application
 
-A **Order & Inventory Management System** built with **Spring Boot 4**, **React (Vite)**, and **MySQL**.
+An **Order & Inventory Management System** built with **Spring Boot 4**, **React (Vite)**, and **MySQL**.
 This is the application deployed by the DevOps platform described in the [root README](../README.md)
 (Docker, Terraform, EKS, Jenkins, monitoring).
 
@@ -38,9 +38,7 @@ order-inventory-platform/
 │   ├── Dockerfile                # Maven build → JRE runtime (non-root)
 │   └── pom.xml
 │
-├── database/                     # MySQL scripts (run automatically on the first Docker Compose start)
-│   ├── schema.sql                # Tables, foreign keys and indexes
-│   ├── data.sql                  # Demo seed data
+├── database/                     # Schema documentation (migrations: backend/src/main/resources/db)
 │   └── README.md
 │
 ├── logging/                      # Filebeat + ILM policy for the ELK overlay
@@ -59,7 +57,7 @@ docker compose up -d --build
 # UI:  http://localhost:3000      API: http://localhost:8080/api/health
 ```
 
-The first start creates the schema and demo data in a persistent volume. See the root README for
+On first start the backend creates the schema with Flyway and, for an empty local database, loads demo data; data lives in a persistent volume. See the root README for
 ports, the ELK overlay and troubleshooting.
 
 ---
@@ -81,13 +79,13 @@ export SPRING_DATASOURCE_USERNAME=inventory
 export SPRING_DATASOURCE_PASSWORD='<password>'
 ```
 
-Hibernate creates/updates the tables on startup (`spring.jpa.hibernate.ddl-auto=update`).
+Flyway applies the migrations in `src/main/resources/db/migration` on startup; Hibernate validates the schema (`ddl-auto=validate`).
 
 ### Run & test
 ```bash
 cd backend
 mvn spring-boot:run      # http://localhost:8080
-mvn clean test           # 14 tests, in-memory H2 database (no MySQL needed)
+mvn clean verify         # 29 tests + JaCoCo coverage; in-memory H2 with the real Flyway migrations
 ```
 
 ---
@@ -102,7 +100,9 @@ mvn clean test           # 14 tests, in-memory H2 database (no MySQL needed)
 cd frontend
 npm install
 npm run dev     # http://localhost:5173 — /api is proxied to http://localhost:8080
-npm test        # 12 tests (Vitest + Testing Library)
+npm run lint    # ESLint
+npm test        # 21 tests (Vitest + Testing Library)
+npm run test:coverage
 npm run build   # production bundle in dist/
 ```
 

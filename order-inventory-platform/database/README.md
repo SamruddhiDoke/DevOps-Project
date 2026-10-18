@@ -1,42 +1,34 @@
-# Database Setup: Order & Inventory Management System
+# Database: Order & Inventory Management System
 
-This directory contains the database definition and initial seed data for the **Order & Inventory Management System**.
+- **Engine:** MySQL 8.4 (Docker Compose locally, Amazon RDS on AWS)
+- **Database:** `order_inventory_db` (utf8mb4)
+- **Schema owner:** Flyway — migrations live in
+  `backend/src/main/resources/db/migration` and run automatically when the backend starts.
+  Hibernate only validates that the entities match (`ddl-auto=validate`).
 
-## Database Details
+| Migration | Content |
+|---|---|
+| `V1__initial_schema.sql` | `users`, `products`, `orders`, `order_items` with primary/foreign keys and the unique email |
+| `V2__indexes_and_integrity_checks.sql` | indexes on order status/date and product category; `CHECK` constraints: stock ≥ 0, price > 0, quantity > 0 |
+| `db/seed/R__demo_data.sql` | demo users/products/orders — **local only** (enabled in `docker-compose.yml`) and inserted **only when `users` is empty** |
 
-- **Database Name**: `order_inventory_db`
-- **Engine**: MySQL 8.x / MariaDB
-- **Character Set**: `utf8mb4`
+Relationships: `users 1─N orders`, `orders 1─N order_items`, `products 1─N order_items`.
 
-## Files
+## Existing databases
 
-1. **`schema.sql`**: Creates the `order_inventory_db` database and defined tables (`users`, `products`, `orders`, `order_items`) along with foreign key constraints and indexes.
-2. **`data.sql`**: Seeds realistic mock data for users, products (with varying stock quantities including low-stock and out-of-stock items), and multi-item orders across different statuses.
+A database created before Flyway was adopted (tables already present, no `flyway_schema_history`) is
+**baselined at version 1**: nothing in it is changed or deleted; `V2` and later migrations then apply.
+Back up first anyway:
 
-## Quick Setup Instructions
-
-> **Docker Compose runs both scripts automatically** the first time the MySQL volume is created
-> (`docker compose up`); no manual step is needed. On EKS/RDS the backend creates the tables on
-> startup (Hibernate `ddl-auto=update`).
->
-> ⚠️ `schema.sql` starts with `DROP TABLE` statements. Running it manually against an existing
-> database **deletes all data** — only use it on an empty or disposable database.
-
-### Option 1: MySQL CLI
-```bash
-# 1. Run schema creation
-mysql -u root -p < schema.sql
-
-# 2. Populate sample data
-mysql -u root -p < data.sql
+```powershell
+docker exec inventory-mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --databases order_inventory_db' > backup.sql
 ```
 
-### Option 2: MySQL Workbench / DBeaver / phpMyAdmin
-1. Open and execute `schema.sql`
-2. Open and execute `data.sql`
+## Adding a schema change
 
-## Database Entity Relationships
+Create `V3__short_description.sql` (never edit an applied migration), keep it backward compatible for one
+release (rollbacks run the previous app version on the new schema), run `mvn verify` (tests apply all
+migrations to an in-memory database and validate the entities), then start the stack.
 
-- `users` (1) ─── (N) `orders`
-- `orders` (1) ─── (N) `order_items`
-- `products` (1) ─── (N) `order_items`
+The former `schema.sql` / `data.sql` scripts were replaced by these migrations (their first statements
+dropped all tables, which made them unsafe to re-run).
