@@ -92,3 +92,6 @@ terraform.rc
 # CI reports and local CI secrets
 reports/
 ci/.env
+
+# Ansible inventory with real hosts (use inventory.example.ini as the template)
+ansible/inventory.ini
