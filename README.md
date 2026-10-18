@@ -6,11 +6,15 @@ immutable images, Terraform-provisioned AWS infrastructure, Helm deployments to 
 zero-downtime rollouts and automatic rollback, Ansible-configured Jenkins, CloudWatch/SNS alerting and
 ELK logging.
 
-> **Status at a glance** (details in [docs/TESTING.md](docs/TESTING.md)): everything that can run locally
-> has been executed and verified — application tests, Docker Compose acceptance, Kubernetes rollout/rollback
-> on minikube, a green Jenkins pipeline with SonarQube and Trivy gates, Ansible on Ubuntu 24.04,
-> Terraform validate/plan/scan. **The AWS deployment itself has not been applied** (it requires cost approval);
-> the AWS-only acceptance steps are listed in [docs/TESTING.md](docs/TESTING.md#not-yet-verified).
+> **Status (2026-10-19): deployed and verified on AWS (ap-south-1).** Jenkins on EC2 (configured by Ansible)
+> ran the full pipeline — tests, SonarQube quality gate, Trivy gates, ECR push, Helm deploy to EKS, health checks
+> through the ALB (build #4). Through the public ALB: 20/20 read/write smoke checks against RDS; 9,532 requests
+> with **0 errors** during two releases, a bad-image release, an unhealthy release (both auto-rolled back) and a
+> restart. Alerts proven CloudWatch → SNS → SQS; logs searchable in ELK on EKS. Evidence and the remaining
+> open items: [docs/TESTING.md](docs/TESTING.md), deployment record: [docs/AWS_DEPLOYMENT.md](docs/AWS_DEPLOYMENT.md).
+>
+> Application: http://k8s-orderinv-orderinv-00335110a2-2009364498.ap-south-1.elb.amazonaws.com (while the
+> environment is running; ≈ $0.43/hour — tear it down when not needed).
 
 ---
 
@@ -134,7 +138,8 @@ Ports already in use? Set `FRONTEND_HOST_PORT`, `BACKEND_HOST_PORT`, `MYSQL_HOST
 | `CORS_ALLOWED_ORIGINS` | backend | `*` | Only needed if the UI is served from another origin |
 | `BACKEND_URL` | frontend nginx | `http://backend:8080` | `/api` proxy target |
 | `VITE_API_BASE_URL` / `VITE_DEV_API_PROXY` | frontend build / dev server | `/api` / `http://localhost:8080` | API location |
-| `TF_VAR_db_password`, `TF_VAR_alert_email` | Terraform | — (never committed) | RDS password; alert/budget email |
+| `TF_VAR_alert_email` | Terraform | empty | Optional email for alarms/budget (alerts always reach the SQS audit queue) |
+| `admin_cidr_blocks` | `terraform/admin.auto.tfvars` (git-ignored) | — | Your IP/32 for Jenkins SSH/UI and the EKS API |
 
 ### Database schema and initialization
 
@@ -223,16 +228,18 @@ Provisioning, cluster bootstrap, Ansible, deployment and teardown: [docs/RUNBOOK
 | Component | Unit price | Full | Learning |
 |---|---|---|---|
 | EKS control plane | $0.10/h (extended-support versions: $0.50/h) | $73.00 | $73.00 |
-| t3.medium (nodes, Jenkins) | $0.0448/h | 3 × $32.70 = $98.11 | 1 × $32.70 |
+| t3.medium EKS nodes | $0.0448/h | 2 × $32.70 = $65.41 | 1 × $32.70 |
+| t3.large Jenkins + SonarQube | $0.0896/h | $65.41 | — (local Jenkins) |
 | NAT gateway | $0.056/h + $0.056/GB | $40.88 + data | $40.88 + data |
 | ALB | $0.0239/h + $0.008/LCU-h | ≈ $20 | ≈ $20 |
 | RDS db.t3.micro + 20 GB gp3 | $0.025/h + $0.131/GB-mo | $20.87 | $20.87 |
 | EBS gp3 (node 20 GB, Jenkins 30 GB) | $0.0912/GB-mo | $6.38 | $1.82 |
 | Public IPv4 (NAT, ALB ×2, Jenkins) | $0.005/h each | $14.60 | $10.95 |
 | KMS, alarms, logs, ECR, S3 | — | ≈ $3 | ≈ $3 |
-| **Total** | | **≈ $277/month ≈ $0.38/h** | **≈ $203/month ≈ $0.28/h** |
+| Secrets Manager (3), extra alarms | $0.40/secret, $0.10/alarm | ≈ $2.40 | ≈ $1.60 |
+| **Total** | | **≈ $311/month ≈ $0.43/h** | **≈ $204/month ≈ $0.28/h** |
 
-A 4-hour demo costs about **$1.10–$1.50**. EKS, NAT and the ALB dominate; **destroy after use**
+A 4-hour demo costs about **$1.20–$1.80**. EKS, NAT and the ALB dominate; **destroy after use**
 (teardown order in the runbook — delete the Ingress before `terraform destroy`). An AWS Budget with email
 alerts is created when `alert_email` is set.
 
@@ -276,12 +283,13 @@ rotation procedures: [docs/SECURITY.md](docs/SECURITY.md).
 
 ## 15. Known limitations and work not yet verified
 
-- **Not yet executed on AWS:** `terraform apply`, EKS deployment through Jenkins, ALB health checks, CloudWatch
-  alarm delivery, S3 report upload, IRSA for the LB controller. Configuration is validated, planned and
-  scanned; the AWS acceptance checklist is in [docs/TESTING.md](docs/TESTING.md#not-yet-verified).
+- **Jenkins builds from a Git mirror on the Jenkins host**, not GitHub, until the rewritten (secret-free) history
+  is force-pushed to GitHub — that push awaits the repository owner's approval. The GitHub-triggered flow is
+  therefore not yet verified.
 - HTTP only (no domain/ACM certificate); demo login page without authentication.
 - The backend uses the RDS master user; a dedicated least-privilege DB user is recommended.
-- Single NAT gateway (not AZ-redundant) to limit cost; SonarQube is not provisioned in AWS (local only).
+- Single NAT gateway (not AZ-redundant) to limit cost; SonarQube runs on the Jenkins host (single instance, no HA).
+- ELK on EKS is demo-sized (single-node Elasticsearch on an emptyDir; logs are lost if that pod is rescheduled).
 - Screenshots are not included; evidence is provided as command output in `docs/evidence/`.
 
 ## Further documentation

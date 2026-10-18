@@ -709,6 +709,19 @@ resource "aws_db_parameter_group" "mysql" {
     value = "2"
   }
 
+  # Size MySQL for the 1 GiB db.t3.micro: the 8.4 defaults (buffer pool ~75 % of RAM plus
+  # performance_schema) left ~50 MB free and caused swapping (found via the FreeableMemory alarm).
+  parameter {
+    name  = "innodb_buffer_pool_size"
+    value = "{DBInstanceClassMemory*3/8}"
+  }
+
+  parameter {
+    name         = "performance_schema"
+    value        = "0"
+    apply_method = "pending-reboot"
+  }
+
   lifecycle {
     create_before_destroy = true
   }

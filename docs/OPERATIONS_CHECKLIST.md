@@ -16,10 +16,10 @@
 
 ## Before provisioning AWS
 - [ ] Not using root access keys (`aws sts get-caller-identity` shows the deployer user)
-- [ ] `TF_VAR_db_password` set (new, never the old exposed password); `admin_cidr_blocks` = your IP/32
+- [ ] `terraform/admin.auto.tfvars` holds your current IP/32 (passwords are generated into Secrets Manager)
 - [ ] `TF_VAR_alert_email` set and SNS subscription confirmed (budget + alarms)
 - [ ] `terraform plan` reviewed: only expected creations, no replacements/destroys
-- [ ] Remote state configured (`backend.tf.example`) if anyone else will run Terraform
+- [ ] Remote state bucket exists (`terraform/bootstrap`) and `terraform init` uses the S3 backend
 
 ## After provisioning
 - [ ] Cluster bootstrap: namespace, `create-db-secret.sh`, `install-lb-controller.sh`

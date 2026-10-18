@@ -61,9 +61,8 @@ Local controller built from `ci/jenkins/Dockerfile` (pinned toolchain, configura
 | #3 | SUCCESS (6m09s) | full CI path; evidence [`evidence/jenkins-local-build-3.txt`](evidence/jenkins-local-build-3.txt) |
 | #4 | SUCCESS (3m25s) | latest code: 29 tests, coverage recorded with sources, SonarQube gate PASSED (backend + frontend), Trivy gates passed, images built and scanned |
 
-Deployment stages (ECR push, Helm deploy to EKS, ALB health check, post-failure rollback) were skipped
-by design (`DEPLOY=false`) → **BLOCKED** until AWS is provisioned. Their logic is the same
-`scripts/deploy-k8s.sh` verified on minikube. Jenkinsfile syntax was additionally validated with Jenkins'
+These local runs used `DEPLOY=false`. The full pipeline including deployment was then run on the
+Jenkins EC2 host — see "AWS deployment" below. Jenkinsfile syntax was additionally validated with Jenkins'
 declarative linter.
 
 ## Infrastructure and configuration management
@@ -75,10 +74,10 @@ declarative linter.
 | `terraform plan` learning profile | 62 to add, 0 to change, 0 to destroy | VERIFIED (plan only) |
 | Variable guard: EKS API `0.0.0.0/0` rejected | plan fails with "Do not open the EKS API to 0.0.0.0/0." | VERIFIED |
 | Trivy IaC scan (Terraform, Helm, Dockerfiles), HIGH/CRITICAL, both profiles | 0 findings beyond the 4 documented exceptions in `.trivyignore` | VERIFIED |
-| `terraform apply` / real AWS resources | not run (cost approval required) | BLOCKED |
+| `terraform apply` (full profile + generated secrets + DB tuning) | 90 + 6 created, then 1 in-place change; `terraform plan` afterwards: no changes | VERIFIED |
 | Ansible syntax + `ansible-lint` (production profile) | clean | VERIFIED |
 | Ansible apply on Ubuntu 24.04 (systemd container) | 29 ok, 0 failed; second run `changed=0`; Jenkins active, `/login` 200; toolchain versions match pins | VERIFIED ([evidence](evidence/ansible-container-test-2026-10-18.txt)) |
-| Ansible against the real EC2 host | needs the instance | BLOCKED |
+| Ansible against the real Jenkins EC2 host (incl. SonarQube + Jenkins configuration as code) | first run 49 ok / 24 changed / 0 failed; repeat runs `changed=0`; Jenkins survives restart | VERIFIED |
 
 ## Logging and monitoring
 
@@ -88,7 +87,10 @@ declarative linter.
 | ILM retention policy (delete after 7 days) installed | `GET _ilm/policy/order-inventory-logs` | VERIFIED |
 | Kibana objects import (data view, 4 saved searches, dashboard) | `kibana-setup.sh`: 6 objects, success | VERIFIED |
 | Trace a failed order by `requestId` | one id returned the nginx access line and the backend `Order rejected …` event | VERIFIED |
-| CloudWatch alarms / SNS / Budget delivery | defined in Terraform; not created | BLOCKED |
+| CloudWatch alarm → SNS → SQS delivery | `set-alarm-state` test: message received with expected alarm/state/metric; alarm restored | VERIFIED |
+| Real alarm on real metrics | `rds-freeable-memory-low` fired (MySQL 8.4 defaults on 1 GiB db.t3.micro, swap growing); fixed by tuning the parameter group | VERIFIED (genuine finding) |
+| AWS Budget | $350, ACTUAL 80 % / FORECASTED 100 % → SNS; threshold not reached | IMPLEMENTED, NOT VERIFIED (cannot be triggered without spend) |
+| ELK on EKS | pods Ready (read-only root fs); failed order traced by `requestId` with Kubernetes metadata; 7-day ILM; DB password in 0 documents | VERIFIED |
 
 ## Security scans
 
@@ -106,15 +108,48 @@ Before remediation the images had 11 (backend) and 68 (frontend) HIGH/CRITICAL f
 Spring Framework RCE fixed only in Spring 7 → resolved by upgrading to Spring Boot 4.1, nginx 1.30, patched
 Tomcat/Jackson and `apk upgrade`.
 
+## AWS deployment (ap-south-1, 2026-10-18/19)
+
+Details and resource inventory: [AWS_DEPLOYMENT.md](AWS_DEPLOYMENT.md).
+
+### Jenkins on EC2 (configured by Ansible, source = rewritten history via the host's Git mirror)
+
+| Build | Result | Cause / notes |
+|---|---|---|
+| #1 | FAILURE at checkout | Git "dubious ownership" on the mirror (owned by `ubuntu`, read by `jenkins`) → `safe.directory` added in the `git_mirror` role |
+| #2 | FAILURE at Deploy (exit 126) | all CI stages passed and images were pushed (`2-06f7acc`); scripts lacked the executable bit in Git (Windows) → `git update-index --chmod=+x` |
+| #3 | FAILURE at Dependency & IaC Scan | **gate worked**: 5 HIGH findings in the new `k8s/logging/elk.yaml` → fixed (read-only root fs, non-root ES/Kibana, path-scoped Filebeat exception) |
+| **#4** | **SUCCESS** (6m15s) | commit `bf7450d`: 29 backend tests, frontend lint/tests/build, SonarQube gate PASSED (backend + frontend), Trivy dependency/IaC/secret/image gates, Helm lint, images `4-bf7450d` pushed to ECR, Helm deploy (2/2 + 2/2), image-tag verification, in-cluster readiness, 8 checks through the ALB |
+
+### Application through the public ALB
+
+| Check | Result | Status |
+|---|---|---|
+| ALB + target groups | internet-facing, 2 public subnets; backend (`/api/health`) and frontend (`/healthz`) targets healthy | VERIFIED |
+| Full read/write smoke test (`scripts/smoke-test.sh`) against RDS | 20/20 | VERIFIED |
+| Flyway on RDS | V1 and V2 applied, two replicas coordinated by Flyway's lock, no baseline marker | VERIFIED |
+| Network exposure | ALB: only 80 open; RDS private (10.0.22.34), 3306 unreachable from the internet, SG = EKS cluster SG only; Jenkins 22/8080 only from the admin /32; SonarQube not reachable externally | VERIFIED |
+| ECR | immutable tags, scan on push: 0 findings for `4-bf7450d` | VERIFIED |
+
+### Zero downtime, rollback and failure tests on AWS
+
+Client on the workstation, through the public ALB; every non-200 counts.
+Evidence: [aws-zero-downtime](evidence/aws-zero-downtime-2026-10-19.txt), [aws-rds-interruption](evidence/aws-rds-interruption-2026-10-19.txt).
+
+| Scenario | Requests | Non-200 | Outcome |
+|---|---|---|---|
+| Rolling release 4-bf7450d → 2-06f7acc | 1,712 | 0 | 113 s |
+| Rolling release 2-06f7acc → 4-bf7450d | 1,702 | 0 | 108 s |
+| Non-existent image | 1,982 | 0 | deploy exit 1, automatic Helm rollback |
+| Pods never Ready (wrong DB credentials) | 2,394 | 0 | deploy exit 1, rollback, working secret restored |
+| Controlled restart of both deployments | 1,742 | 0 | 103 s |
+| **Total** | **9,532** | **0** | |
+| RDS reboot (database interruption) | 88 samples | 3× 503 on `/api/products` (~1 s) | liveness and frontend 100 % 200; 0 pod restarts; data intact |
+
 ## Not yet verified
 
-These require the approved AWS deployment:
-
-1. `terraform apply` (full or learning profile) and post-apply `terraform plan` showing no drift.
-2. Ansible against the Jenkins EC2 host; Jenkins job with `DEPLOY=true`.
-3. Images pushed to ECR (immutability, scan on push), Helm deploy to EKS through Jenkins.
-4. ALB provisioning by the Load Balancer Controller (IRSA), public smoke test, zero-downtime test through the ALB.
-5. RDS TLS enforcement with the real endpoint; KMS-encrypted Secrets.
-6. CloudWatch alarm → SNS email delivery (e.g. `aws cloudwatch set-alarm-state` test), Budget notification.
-7. CI report upload to S3.
-8. Teardown and the post-teardown checklist (docs/RUNBOOKS.md §8).
+1. **GitHub-triggered pipeline**: Jenkins builds from the host's Git mirror because GitHub still holds the
+   pre-remediation history; switching the job to GitHub requires the approved force-push first.
+2. Budget notification at a real threshold (requires actual spend).
+3. Email delivery of alerts (no email subscribed; delivery verified through the SQS audit subscription).
+4. HTTPS (no domain/ACM certificate in this project).

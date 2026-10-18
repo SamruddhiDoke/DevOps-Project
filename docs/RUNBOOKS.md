@@ -21,40 +21,51 @@ Never run `docker compose down -v` unless you intend to delete the database.
 Verification (*bash*): `./scripts/smoke-test.sh http://localhost:3000` (20 checks) and
 `COMPOSE_PROJECT_NAME=oi-check ./scripts/compose-acceptance-test.sh` (8 checks, isolated volume).
 
-## 2. Provision AWS (requires cost approval — see README "Cost")
+## 2. Provision AWS (exactly as done on 2026-10-18 — see docs/AWS_DEPLOYMENT.md)
 
-```powershell
-cd terraform
-$env:TF_VAR_db_password = Read-Host -AsSecureString "RDS password" | ConvertFrom-SecureString -AsPlainText
-$env:TF_VAR_alert_email = "you@example.com"          # budget + alarm emails (confirm the SNS email)
-# edit environments/full.tfvars (or learning.tfvars): set admin_cidr_blocks to your IP/32
-terraform init
-terraform plan -var-file=environments/full.tfvars -out tfplan
-terraform apply tfplan                                 # ~20 min
-```
-
-Cluster bootstrap (once, as the cluster creator; *bash*):
+Use a scoped IAM identity, not root (the deployer user/policy is in `aws/iam/`):
 
 ```bash
-aws eks update-kubeconfig --region ap-south-1 --name order-inventory-eks
+export AWS_PROFILE=order-inventory AWS_REGION=ap-south-1
+# 1. Remote state bucket (once)
+terraform -chdir=terraform/bootstrap init && terraform -chdir=terraform/bootstrap apply
+# 2. Your admin IP (git-ignored file; re-check if your ISP changes it)
+printf 'admin_cidr_blocks = ["%s/32"]\n' "$(curl -s https://checkip.amazonaws.com)" > terraform/admin.auto.tfvars
+# 3. Infrastructure (~20 min). Pass admin.auto.tfvars LAST so it overrides the profile placeholder.
+cd terraform && terraform init
+terraform plan -var-file=environments/full.tfvars -var-file=admin.auto.tfvars -out deploy.tfplan   # review
+terraform apply deploy.tfplan
+```
+
+No password is typed: Terraform generates the RDS, Jenkins and SonarQube admin passwords into Secrets
+Manager (`order-inventory/rds-master`, `/jenkins-admin`, `/sonarqube-admin`). Optional email alerts:
+`TF_VAR_alert_email=you@example.com` (confirm the SNS email). Every alert is also copied to the SQS
+queue `order-inventory-alerts-audit`.
+
+Cluster bootstrap (once, as the cluster creator):
+
+```bash
+aws eks update-kubeconfig --name order-inventory-eks --alias order-inventory-eks
 kubectl apply -f k8s/namespace.yaml
-./scripts/create-db-secret.sh          # reads TF_VAR_db_password + rds_endpoint
-./scripts/install-lb-controller.sh     # AWS Load Balancer Controller (IRSA)
+./scripts/create-db-secret.sh          # reads Secrets Manager; prints only the host
+./scripts/install-lb-controller.sh     # AWS Load Balancer Controller v3.6.0 (IRSA)
+kubectl apply -f k8s/logging/elk.yaml  # optional: in-cluster ELK
 ```
 
-Configure Jenkins on EC2 (*bash*, from `ansible/`):
+Configure Jenkins + SonarQube on EC2 (no local Ansible needed; runs in a container, secrets streamed
+from Secrets Manager, never printed):
 
 ```bash
-cp inventory.example.ini inventory.ini   # set ansible_host = terraform output jenkins_public_ip
-ansible-playbook playbooks/jenkins.yml --check   # dry run
-ansible-playbook playbooks/jenkins.yml
+SSH_KEY=~/Downloads/UniversalKey.pem ./ansible/run-playbook.sh --check   # dry run
+SSH_KEY=~/Downloads/UniversalKey.pem ./ansible/run-playbook.sh           # idempotent (re-run: changed=0)
+git remote add jenkins-mirror ubuntu@$(terraform -chdir=terraform output -raw jenkins_public_ip):/srv/git/devops-project.git
+GIT_SSH_COMMAND="ssh -i ~/Downloads/UniversalKey.pem -o IdentitiesOnly=yes" git push jenkins-mirror main
 ```
 
-Then open `terraform output jenkins_url`, unlock with the password from
-`sudo cat /var/lib/jenkins/secrets/initialAdminPassword`, install suggested plugins + `coverage`,
-create a Pipeline job from SCM (`Jenkinsfile`), and set global env vars `CI_REPORTS_BUCKET`
-(`terraform output ci_reports_bucket`) and, if you run SonarQube, `SONAR_HOST_URL` + a
-`sonarqube-token` secret-text credential.
+Jenkins (`terraform output jenkins_url`, reachable only from your IP) comes up fully configured as code:
+admin user (password in `order-inventory/jenkins-admin`), job `order-inventory` polling the mirror,
+SonarQube token credential, `SONAR_HOST_URL`, `CI_REPORTS_BUCKET`. SonarQube listens on 127.0.0.1:9000
+only — open it with `ssh -L 9000:127.0.0.1:9000 ubuntu@<jenkins-ip>`.
 
 ## 3. Deploy
 
@@ -124,13 +135,17 @@ The ALB and its target groups/security groups are created by the Load Balancer C
 Terraform. Destroying the VPC first fails with dependency errors (this happened before).
 
 ```bash
+export AWS_PROFILE=order-inventory AWS_REGION=ap-south-1
+kubectl delete -f k8s/logging/elk.yaml --ignore-not-found
 kubectl -n order-inventory delete ingress order-inventory-ingress
 # wait until no k8s-orderinv load balancers remain:
 aws elbv2 describe-load-balancers --region ap-south-1 --query "LoadBalancers[?contains(LoadBalancerName,'k8s-orderinv')].LoadBalancerName"
 helm uninstall aws-load-balancer-controller -n kube-system
 aws cloudwatch describe-alarms --region ap-south-1 --alarm-name-prefix order-inventory-alb --query "MetricAlarms[].AlarmName" --output text | xargs -r aws cloudwatch delete-alarms --region ap-south-1 --alarm-names
-cd terraform && terraform plan -destroy -var-file=environments/full.tfvars   # review
-terraform destroy -var-file=environments/full.tfvars
+cd terraform && terraform plan -destroy -var-file=environments/full.tfvars -var-file=admin.auto.tfvars   # review
+terraform destroy -var-file=environments/full.tfvars -var-file=admin.auto.tfvars
+# Secrets Manager secrets: 7-day recovery window; KMS key: 7-day pending deletion.
+# The state bucket (terraform/bootstrap) is kept; destroy it separately once the state is no longer needed.
 ```
 
 Post-teardown checklist (all must be empty):
@@ -152,6 +167,8 @@ aws kms list-aliases --region $R --query "Aliases[?AliasName=='alias/order-inven
 ## 9. SonarQube
 
 Local: `./ci/start-local-ci.sh` starts SonarQube (http://localhost:19000) and Jenkins
-(http://localhost:18090) with generated credentials in `ci/.env`. On the EC2 Jenkins, the Code Quality
-stage runs only when `SONAR_HOST_URL` is set (SonarQube is not provisioned in AWS to avoid an always-on
-instance); otherwise the stage is reported as skipped in the build log.
+(http://localhost:18090) with generated credentials in `ci/.env`. On AWS, SonarQube 26.10 runs as a
+container on the Jenkins EC2 host (Ansible role `sonarqube`, bound to 127.0.0.1:9000, data in Docker
+volumes) and the pipeline enforces its quality gate. Admin password: Secrets Manager
+`order-inventory/sonarqube-admin`; UI via `ssh -L 9000:127.0.0.1:9000 ubuntu@<jenkins-ip>`. If
+`SONAR_HOST_URL` is unset, the stage reports itself as skipped.
