@@ -17,3 +17,12 @@
     creates: /srv/git/devops-project.git/HEAD
   become: true
   become_user: "{{ ansible_user | default('ubuntu') }}"
+
+# The mirror is owned by the SSH user but read by the jenkins user: trust exactly this path
+- name: Trust the mirror repository for other users (git safe.directory)
+  community.general.git_config:
+    name: safe.directory
+    value: /srv/git/devops-project.git
+    scope: system
+    add_mode: add
+    state: present

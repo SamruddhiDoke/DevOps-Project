@@ -22,7 +22,7 @@
 
   post_tasks:
     - name: Verify toolchain versions (first line of each version banner; java prints to stderr)
-      ansible.builtin.shell: "set -o pipefail; {{ item }} 2>&1 | head -n 1"
+      ansible.builtin.shell: "set -o pipefail; {{ item }} 2>&1 | sed -n 1p"
       args:
         executable: /bin/bash
       loop:
