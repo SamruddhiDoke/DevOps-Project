@@ -14,7 +14,7 @@ env_set() { touch "$ENV_FILE"; grep -vE "^$1=" "$ENV_FILE" > "$ENV_FILE.tmp" || 
 
 [ -n "$(env_get JENKINS_ADMIN_PASSWORD)" ] || env_set JENKINS_ADMIN_PASSWORD "$(rand)"
 # Group that owns the Docker socket inside the Docker VM (lets the jenkins user run docker builds)
-env_set DOCKER_SOCKET_GID "$(docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine:3 stat -c %g /var/run/docker.sock)"
+env_set DOCKER_SOCKET_GID "$(MSYS_NO_PATHCONV=1 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock alpine:3 stat -c %g /var/run/docker.sock)"
 
 echo "Starting SonarQube..."
 dc up -d sonarqube >/dev/null
