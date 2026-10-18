@@ -1,3 +1,8 @@
+output "aws_account_id" {
+  description = "AWS account ID the infrastructure was created in"
+  value       = data.aws_caller_identity.current.account_id
+}
+
 output "vpc_id" {
   description = "The ID of the custom VPC"
   value       = aws_vpc.main.id
@@ -39,13 +44,13 @@ output "frontend_ecr_repository_url" {
 }
 
 output "eks_cluster_security_group_id" {
-  description = "Security group ID for EKS cluster"
+  description = "Additional security group attached to the EKS control plane"
   value       = aws_security_group.eks_cluster.id
 }
 
-output "eks_nodes_security_group_id" {
-  description = "Security group ID for EKS worker nodes"
-  value       = aws_security_group.eks_nodes.id
+output "eks_managed_cluster_security_group_id" {
+  description = "EKS-created cluster security group used by nodes/pods (trusted by RDS)"
+  value       = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
 }
 
 output "eks_cluster_name" {
@@ -58,18 +63,35 @@ output "eks_cluster_endpoint" {
   value       = aws_eks_cluster.main.endpoint
 }
 
+output "aws_lbc_role_arn" {
+  description = "IAM role for the AWS Load Balancer Controller service account (IRSA)"
+  value       = aws_iam_role.lbc.arn
+}
+
 output "rds_endpoint" {
-  value = aws_db_instance.mysql.address
+  description = "RDS MySQL hostname (private)"
+  value       = aws_db_instance.mysql.address
 }
 
 output "jenkins_instance_id" {
-  value = aws_instance.jenkins.id
+  value = var.create_jenkins ? aws_instance.jenkins[0].id : null
 }
 
 output "jenkins_public_ip" {
-  value = aws_instance.jenkins.public_ip
+  description = "Use in ansible/inventory.ini (Ansible configures the Jenkins host)"
+  value       = var.create_jenkins ? aws_instance.jenkins[0].public_ip : null
 }
 
 output "jenkins_url" {
-  value = "http://${aws_instance.jenkins.public_ip}:8080"
+  value = var.create_jenkins ? "http://${aws_instance.jenkins[0].public_ip}:8080" : null
+}
+
+output "ci_reports_bucket" {
+  description = "S3 bucket receiving per-build CI reports (set as CI_REPORTS_BUCKET in Jenkins)"
+  value       = aws_s3_bucket.ci_reports.bucket
+}
+
+output "alerts_sns_topic_arn" {
+  description = "SNS topic receiving CloudWatch alarm notifications"
+  value       = aws_sns_topic.alerts.arn
 }
