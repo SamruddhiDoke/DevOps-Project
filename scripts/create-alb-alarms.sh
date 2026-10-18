@@ -37,5 +37,21 @@ aws cloudwatch put-metric-alarm --region "$REGION" \
   --comparison-operator GreaterThanThreshold --treat-missing-data notBreaching \
   --alarm-actions "$TOPIC_ARN" --ok-actions "$TOPIC_ARN"
 
+# Downtime detection: any target group of this ALB with unhealthy targets for 3 minutes
+for TG_ARN in $(aws elbv2 describe-target-groups --region "$REGION" --load-balancer-arn "$ALB_ARN" \
+                  --query 'TargetGroups[].TargetGroupArn' --output text); do
+  TG_DIM="${TG_ARN#*:}"; TG_DIM="targetgroup/${TG_DIM#*:targetgroup/}"
+  TG_NAME="$(echo "$TG_DIM" | cut -d/ -f2)"
+  aws cloudwatch put-metric-alarm --region "$REGION" \
+    --alarm-name "order-inventory-alb-unhealthy-hosts-${TG_NAME}" \
+    --alarm-description "Unhealthy targets behind the ALB (${TG_NAME}) for 3 minutes" \
+    --namespace AWS/ApplicationELB --metric-name UnHealthyHostCount \
+    --dimensions Name=LoadBalancer,Value="$ALB_DIM" Name=TargetGroup,Value="$TG_DIM" \
+    --statistic Maximum --period 60 --evaluation-periods 3 --threshold 0 \
+    --comparison-operator GreaterThanThreshold --treat-missing-data notBreaching \
+    --alarm-actions "$TOPIC_ARN" --ok-actions "$TOPIC_ARN"
+done
+
 echo "ALB alarms created for $ALB_DIM -> $TOPIC_ARN"
-echo "Delete them during teardown: aws cloudwatch delete-alarms --alarm-names order-inventory-alb-5xx order-inventory-alb-target-5xx"
+echo "Delete them during teardown:"
+echo "  aws cloudwatch describe-alarms --alarm-name-prefix order-inventory-alb --query 'MetricAlarms[].AlarmName' --output text | xargs aws cloudwatch delete-alarms --alarm-names"
