@@ -31,6 +31,10 @@ RUN set -eux; \
     curl -fsSLo /tmp/awscli.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip; unzip -q /tmp/awscli.zip -d /tmp; /tmp/aws/install; \
     rm -rf /tmp/*
 
+# The repository is bind-mounted read-only from the host (different owner): trust exactly that path
+RUN git config --system --add safe.directory /repo \
+ && git config --system --add safe.directory /repo/.git
+
 # Jenkins plugins (versions resolved by the LTS update center at build time)
 COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
 RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
