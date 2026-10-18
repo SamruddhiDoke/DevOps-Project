@@ -79,6 +79,11 @@
     dest: /usr/local/bin/kubectl
     mode: "0755"
     force: true
+    timeout: 120
+  register: build_tools_kubectl_download
+  retries: 3
+  delay: 10
+  until: build_tools_kubectl_download is succeeded
   when: build_tools_binary_check.results[2].rc != 0
 
 - name: Install Terraform

@@ -10,8 +10,9 @@
 #      the pre-remediation history), AWS_PROFILE/AWS_REGION for the AWS CLI.
 set -euo pipefail
 
+win() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else echo "$1"; fi; }
 ANSIBLE_DIR="$(cd "$(dirname "$0")" && pwd)"
-TF_DIR="$ANSIBLE_DIR/../terraform"
+TF_DIR="$(win "$(cd "$ANSIBLE_DIR/../terraform" && pwd)")"
 : "${SSH_KEY:?Set SSH_KEY to the private key of the EC2 key pair}"
 export MSYS_NO_PATHCONV=1
 
@@ -22,7 +23,6 @@ LOCAL_CHECKOUT=false; case "$REPO_URL" in file://*) LOCAL_CHECKOUT=true ;; esac
 
 secret() { aws secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text | tr -d '\r'; }
 
-win() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else echo "$1"; fi; }
 
 # Extra vars (secrets included) are streamed on stdin as JSON
 node -e '

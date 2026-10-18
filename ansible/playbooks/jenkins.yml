@@ -5,6 +5,9 @@
 - name: Configure Jenkins CI server
   hosts: jenkins
   become: true
+  # Explicit, so the pinned versions load whatever inventory location is used
+  vars_files:
+    - ../group_vars/all.yml
   roles:
     - common
     - docker
