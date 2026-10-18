@@ -1,0 +1,39 @@
+Command : ./scripts/aws-zero-downtime-test.sh <alb> <ecr-registry> 4-bf7450d 2-06f7acc
+Where   : real EKS deployment (ap-south-1), client = workstation over the internet -> ALB
+Method  : GET /api/products and GET / back-to-back for the whole scenario + 45 s settle; every non-200 counts
+Date    : 2026-10-19
+
+Target: http://k8s-orderinv-orderinv-00335110a2-2009364498.ap-south-1.elb.amazonaws.com   start: backend=backend:4-bf7450d frontend=frontend:4-bf7450d 
+== A. rolling release 4-bf7450d -> 2-06f7acc
+   deploy exit code: 0, duration: 113s, now running: backend=backend:2-06f7acc frontend=frontend:2-06f7acc 
+   requests: 1712, non-200: 0, status distribution: 1712×200 
+== B. rolling release 2-06f7acc -> 4-bf7450d
+   deploy exit code: 0, duration: 108s, now running: backend=backend:4-bf7450d frontend=frontend:4-bf7450d 
+   requests: 1702, non-200: 0, status distribution: 1702×200 
+== C. release with a non-existent image (expect failure + automatic rollback)
+   deploy exit code: 1, duration: 128s, now running: backend=backend:4-bf7450d frontend=frontend:4-bf7450d 
+   requests: 1982, non-200: 0, status distribution: 1982×200 
+   rolled back to 4-bf7450d
+== D. release whose pods never become Ready (wrong DB credentials)
+   deploy exit code: 1, duration: 160s, now running: backend=backend:4-bf7450d frontend=frontend:4-bf7450d 
+   requests: 2394, non-200: 0, status distribution: 2394×200 
+   rolled back to 4-bf7450d
+   working database secret restored
+== E. controlled restart of both deployments
+   restart completed in 103s
+   requests: 1742, non-200: 0, status distribution: 1742×200 
+== Post-test health
+All 8 read-only checks passed against http://k8s-orderinv-orderinv-00335110a2-2009364498.ap-south-1.elb.amazonaws.com
+
+Helm history (release order-inventory):
+REVISION	UPDATED                 	STATUS    	CHART                	APP VERSION	DESCRIPTION                              
+1       	Sun Oct 18 18:58:27 2026	superseded	order-inventory-1.0.0	1.0.0      	Install complete                         
+2       	Mon Oct 19 00:32:28 2026	superseded	order-inventory-1.0.0	1.0.0      	Upgrade complete                         
+3       	Mon Oct 19 00:35:12 2026	superseded	order-inventory-1.0.0	1.0.0      	Upgrade complete                         
+4       	Mon Oct 19 00:37:52 2026	failed    	order-inventory-1.0.0	1.0.0      	Upgrade "order-inventory" failed: resourc
+5       	Mon Oct 19 00:39:55 2026	superseded	order-inventory-1.0.0	1.0.0      	Rollback to 3                            
+6       	Mon Oct 19 00:40:53 2026	failed    	order-inventory-1.0.0	1.0.0      	Upgrade "order-inventory" failed: resourc
+7       	Mon Oct 19 00:43:25 2026	deployed  	order-inventory-1.0.0	1.0.0      	Rollback to 5                            
+
+RESULT: all scenarios passed
+real	14m35.787s

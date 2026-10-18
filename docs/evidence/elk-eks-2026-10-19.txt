@@ -1,0 +1,22 @@
+ELK on EKS — verification 2026-10-19 (Elasticsearch/Kibana/Filebeat 8.19.5 in namespace logging)
+
+Pods:
+NAME                             READY   RESTARTS   READONLY_ROOT
+elasticsearch-54bbb49c6d-r6n2t   true    0          true
+filebeat-8mrmw                   true    0          true
+filebeat-mr2vc                   true    0          true
+kibana-7d6d89bf88-ctsdn          true    0          true
+
+Saved-search queries (dashboard 'Order Inventory - Operations') against indexed EKS logs:
+Backend warnings and errors: 2
+Order failures (OrderService WARN): 2
+Order lifecycle events: 2
+Docs from environment aws: 56
+
+Failed-order trace by requestId (from the API error response via the public ALB):
+  requestId 1ef5064e-9970-40fd-8a6a-9f894ade130c -> 1 document: WARN OrderService 'Order rejected for user 1: insufficient stock for product 1 (available 20, requested 999999)'
+  with kubernetes.namespace=order-inventory, pod=backend-5997b46f7f-pr2bv, container=backend, service.environment=aws
+
+Retention: ILM policy order-inventory-logs delete phase = 7d
+Secret check: RDS master password found in 0 indexed documents (checked without printing it).
+Kibana: 6 saved objects imported (kibana-setup.sh), access via kubectl -n logging port-forward svc/kibana 15601:5601
