@@ -39,7 +39,7 @@ flowchart LR
     jenkins -->|private endpoint, namespace-scoped| nodes
     jenkins -->|push immutable tags| ecr[(ECR)]
     nodes --> nat
-    cw[CloudWatch 12 alarms] --> sns[SNS KMS-encrypted] --> sqs[SQS audit queue]
+    cw[CloudWatch 13 alarms] --> sns[SNS KMS-encrypted] --> sqs[SQS audit queue]
     budget[Budget $350/mo] --> sns
     sm[Secrets Manager: rds-master, jenkins-admin, sonarqube-admin]
 ```
@@ -55,7 +55,7 @@ flowchart LR
 | CI/CD | Jenkins EC2 `i-03288b455e674765e` t3.large (IMDSv2, 30 GB encrypted gp3), IAM role/instance profile, EKS access entry (namespace `order-inventory`, edit) | **instance, EBS, public IPv4** |
 | Registry | ECR `order-inventory-backend`, `order-inventory-frontend` (immutable, scan on push, keep 20) — the unrelated `frontend` repository is untouched | storage (~150 MB) |
 | Secrets/keys | Secrets Manager ×3, KMS key `alias/order-inventory-app` | $0.40/secret, $1/key |
-| Monitoring | 8 Terraform alarms + 4 ALB alarms (script), SNS topic, SQS audit queue + subscription, AWS Budget | alarms $0.10 each |
+| Monitoring | 9 Terraform alarms + 4 ALB alarms (script), SNS topic, SQS audit queue + subscription, AWS Budget | alarms $0.10 each |
 | Storage | S3 CI reports bucket (30-day expiry), S3 Terraform state bucket (bootstrap stack) | negligible |
 | Terraform | 102 resources in remote state `s3://order-inventory-tfstate-038215676861` (+5 bootstrap) | — |
 
@@ -63,7 +63,7 @@ flowchart LR
 
 EKS $73.00 · 2× t3.medium $65.41 · t3.large $65.41 · NAT $40.88 + $0.056/GB · ALB ≈ $20 · RDS ≈ $20.87 ·
 public IPv4 (NAT EIP, ALB ×2, Jenkins) $14.60 · EBS $6.38 · Secrets Manager $1.20 · KMS $1 ·
-12 alarms $1.20 · ECR/S3/logs < $1 → **≈ $311/month ≈ $0.43/hour.** Everything except ECR/S3 storage
+13 alarms $1.30 · ECR/S3/logs < $1 → **≈ $311/month ≈ $0.43/hour.** Everything except ECR/S3 storage
 bills while idle. The Budget alerts at 80 % of $350 (actual) and 100 % (forecast).
 
 ## How it was verified

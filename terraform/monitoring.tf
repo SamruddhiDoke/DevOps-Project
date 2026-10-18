@@ -114,16 +114,34 @@ resource "aws_cloudwatch_metric_alarm" "rds_free_storage_low" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "rds_freeable_memory_low" {
-  alarm_name          = "${var.project_name}-rds-freeable-memory-low"
-  alarm_description   = "RDS freeable memory below 64 MiB for 10 minutes"
+  alarm_name = "${var.project_name}-rds-freeable-memory-low"
+  # Calibrated on the deployed db.t3.micro: RDS's own OS/agents leave a steady 40-60 MiB free even
+  # with no connections (observed 2026-10-18/19), so 64 MiB fired permanently. 25 MiB = exhaustion.
+  alarm_description   = "RDS freeable memory below 25 MiB for 10 minutes (memory exhaustion)"
   namespace           = "AWS/RDS"
   metric_name         = "FreeableMemory"
   dimensions          = { DBInstanceIdentifier = aws_db_instance.mysql.identifier }
   statistic           = "Average"
   period              = 300
   evaluation_periods  = 2
-  threshold           = 64 * 1024 * 1024
+  threshold           = 25 * 1024 * 1024
   comparison_operator = "LessThanThreshold"
+  alarm_actions       = local.alarm_actions
+  ok_actions          = local.alarm_actions
+}
+
+# Sustained swapping is the meaningful memory-pressure signal on small instance classes
+resource "aws_cloudwatch_metric_alarm" "rds_swap_high" {
+  alarm_name          = "${var.project_name}-rds-swap-high"
+  alarm_description   = "RDS swap usage above 200 MiB for 15 minutes (instance under memory pressure)"
+  namespace           = "AWS/RDS"
+  metric_name         = "SwapUsage"
+  dimensions          = { DBInstanceIdentifier = aws_db_instance.mysql.identifier }
+  statistic           = "Average"
+  period              = 300
+  evaluation_periods  = 3
+  threshold           = 200 * 1024 * 1024
+  comparison_operator = "GreaterThanThreshold"
   alarm_actions       = local.alarm_actions
   ok_actions          = local.alarm_actions
 }

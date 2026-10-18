@@ -88,7 +88,7 @@ declarative linter.
 | Kibana objects import (data view, 4 saved searches, dashboard) | `kibana-setup.sh`: 6 objects, success | VERIFIED |
 | Trace a failed order by `requestId` | one id returned the nginx access line and the backend `Order rejected …` event | VERIFIED |
 | CloudWatch alarm → SNS → SQS delivery | `set-alarm-state` test: message received with expected alarm/state/metric; alarm restored | VERIFIED |
-| Real alarm on real metrics | `rds-freeable-memory-low` fired (MySQL 8.4 defaults on 1 GiB db.t3.micro, swap growing); fixed by tuning the parameter group | VERIFIED (genuine finding) |
+| Real alarm on real metrics | `rds-freeable-memory-low` fired: swap was growing (1 → 35 MB) under MySQL 8.4 defaults on the 1 GiB db.t3.micro. Parameter group tuned (buffer pool 256 MB, performance_schema off — verified live via a client pod; swap back to ~4 MB). The remaining 40–60 MB free is RDS OS overhead present even with 0 connections, so the threshold was recalibrated to 25 MiB and a SwapUsage > 200 MiB alarm added; all 13 alarms OK | VERIFIED (genuine finding) |
 | AWS Budget | $350, ACTUAL 80 % / FORECASTED 100 % → SNS; threshold not reached | IMPLEMENTED, NOT VERIFIED (cannot be triggered without spend) |
 | ELK on EKS | pods Ready (read-only root fs); failed order traced by `requestId` with Kubernetes metadata; 7-day ILM; DB password in 0 documents | VERIFIED |
 
