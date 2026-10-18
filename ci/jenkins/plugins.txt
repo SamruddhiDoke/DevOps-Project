@@ -1,0 +1,10 @@
+workflow-aggregator
+pipeline-model-definition
+git
+junit
+timestamper
+coverage
+configuration-as-code
+credentials-binding
+job-dsl
+matrix-auth

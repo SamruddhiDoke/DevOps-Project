@@ -1,0 +1,19 @@
+# Accepted Trivy misconfiguration findings (reviewed 2026-10-18). Everything else fails CI.
+# See docs/SECURITY.md "Accepted risks" for the full rationale.
+
+# EKS public API endpoint is enabled for admin kubectl, but restricted to admin CIDRs
+# (public_access_cidrs); nodes and Jenkins use the private endpoint.
+AVD-AWS-0040
+
+# Unrestricted egress on the Jenkins and EKS control-plane security groups: required for package
+# installs, ECR, GitHub and AWS APIs. Ingress is restricted.
+AVD-AWS-0104
+
+# CI report bucket uses SSE-S3 (AES-256) rather than a customer-managed KMS key: the objects are
+# reproducible build reports; private bucket, TLS-only policy, 30-day expiry.
+AVD-AWS-0132
+
+# EKS public endpoint limited to the administrator's own /32 (Trivy flags any public CIDR).
+# 0.0.0.0/0 is rejected by variable validation and by a precondition on aws_eks_cluster.main.
+# Removing public access entirely would require a VPN/bastion for kubectl.
+AVD-AWS-0041

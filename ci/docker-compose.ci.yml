@@ -1,0 +1,55 @@
+# Local CI environment: Jenkins (pinned toolchain, configured as code) + SonarQube.
+#   ./ci/start-local-ci.sh        # generates ci/.env secrets, starts both, creates the Sonar token
+#   Jenkins:   http://localhost:18090  (user admin, password in ci/.env)
+#   SonarQube: http://localhost:19000
+# The repository is mounted read-only and checked out by Jenkins from its committed state.
+name: order-inventory-ci
+
+services:
+  sonarqube:
+    image: sonarqube:26.10.0.133078-community
+    container_name: oi-sonarqube
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:19000:9000"
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+
+  jenkins:
+    build: ./jenkins
+    image: order-inventory-jenkins:local
+    container_name: oi-jenkins
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18090:8080"
+    env_file: .env
+    environment:
+      REPO_URL: file:///repo
+      SONAR_HOST_URL: http://sonarqube:9000
+      # Local checkout of the mounted repository is disabled by default in Jenkins (SECURITY-2478);
+      # enabled here only because this controller is local and single-user.
+      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true"
+    # Docker-outside-of-Docker: builds use the host daemon. Access to the socket is root-equivalent,
+    # which is acceptable for this local, single-user CI controller only.
+    group_add:
+      - "${DOCKER_SOCKET_GID:-0}"
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      - ..:/repo:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+
+volumes:
+  jenkins-home:
+  sonarqube-data:
+  sonarqube-extensions:
