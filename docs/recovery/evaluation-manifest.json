@@ -1,0 +1,61 @@
+{
+  "purpose": "Recovery manifest for scripts/resume-evaluation.sh. Contains no secrets.",
+  "awsAccount": "038215676861",
+  "awsRegion": "ap-south-1",
+  "awsProfile": "order-inventory",
+  "terraformBackend": {
+    "bucket": "order-inventory-tfstate-038215676861",
+    "key": "order-inventory/terraform.tfstate",
+    "lock": "S3 native lockfile"
+  },
+  "eks": {
+    "cluster": "order-inventory-eks",
+    "nodegroup": "order-inventory-nodes",
+    "desiredSize": 2,
+    "minSize": 0,
+    "maxSize": 3
+  },
+  "rds": {
+    "identifier": "order-inventory-mysql",
+    "secret": "order-inventory/rds-master"
+  },
+  "jenkins": {
+    "instanceId": "i-03288b455e674765e",
+    "adminSecret": "order-inventory/jenkins-admin",
+    "repo": "https://github.com/SamruddhiDoke/DevOps-Project.git",
+    "publicIpAtResume": "13.201.0.237"
+  },
+  "application": {
+    "namespace": "order-inventory",
+    "helmRelease": "order-inventory",
+    "helmChart": "helm/order-inventory",
+    "helmRevisionAtSuspend": 11,
+    "registry": "038215676861.dkr.ecr.ap-south-1.amazonaws.com",
+    "repositories": [
+      "order-inventory-backend",
+      "order-inventory-frontend"
+    ],
+    "lastKnownGoodTag": "7-ca5c22c",
+    "replicas": {
+      "backend": 2,
+      "frontend": 2
+    },
+    "ingress": {
+      "name": "order-inventory-ingress",
+      "className": "alb",
+      "recreatedBy": "helm (ingress.enabled=true, chart default)"
+    },
+    "albHostnameAtSuspend": "k8s-orderinv-orderinv-00335110a2-2009364498.ap-south-1.elb.amazonaws.com",
+    "currentUrl": "http://k8s-orderinv-orderinv-00335110a2-1122521152.ap-south-1.elb.amazonaws.com"
+  },
+  "logging": {
+    "namespace": "logging",
+    "manifest": "k8s/logging/elk.yaml",
+    "replicas": {
+      "elasticsearch": 1,
+      "kibana": 1
+    }
+  },
+  "suspendedAt": "2026-10-18T20:27:06.525Z",
+  "resumedAt": "2026-10-18T21:02:06.511Z"
+}

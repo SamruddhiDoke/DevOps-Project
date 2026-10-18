@@ -227,9 +227,11 @@ resource "aws_instance" "jenkins" {
     encrypted   = true
   }
 
-  # A new AMI release must not silently replace the Jenkins server
+  # A new AMI release must not silently replace the Jenkins server. A stopped instance (see
+  # scripts/suspend-evaluation.sh) reads back associate_public_ip_address = false, which would
+  # otherwise force a replacement that destroys the Jenkins disk.
   lifecycle {
-    ignore_changes = [ami]
+    ignore_changes = [ami, associate_public_ip_address]
   }
 
   tags = {

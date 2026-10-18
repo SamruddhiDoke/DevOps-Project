@@ -1,0 +1,39 @@
+# Jenkins build #7 — first build checked out from GitHub (2026-10-19, times UTC)
+# Excerpt of the console log; full log on the Jenkins host.
+Started by user admin
+Checking out git https://github.com/SamruddhiDoke/DevOps-Project.git into /var/lib/jenkins/workspace/order-inventory@script/b792cb2984f2399fc0a545583f4526cf7882280ba7d7989b8d53543eb5b9dce9 to read Jenkinsfile
+The recommended git tool is: NONE
+No credentials specified
+Cloning the remote Git repository
+Cloning repository https://github.com/SamruddhiDoke/DevOps-Project.git
+ > git init /var/lib/jenkins/workspace/order-inventory@script/b792cb2984f2399fc0a545583f4526cf7882280ba7d7989b8d53543eb5b9dce9 # timeout=10
+Fetching upstream changes from https://github.com/SamruddhiDoke/DevOps-Project.git
+ > git --version # timeout=10
+ > git --version # 'git version 2.43.0'
+ > git fetch --tags --force --progress -- https://github.com/SamruddhiDoke/DevOps-Project.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git config remote.origin.url https://github.com/SamruddhiDoke/DevOps-Project.git # timeout=10
+ > git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/* # timeout=10
+Avoid second fetch
+ > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
+Checking out Revision ca5c22c588cb89b33b16f48594a8042d7f43ffb0 (refs/remotes/origin/main)
+[2026-10-18T20:19:34.112Z] [INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.795 s -- in com.example.orderinventory.dto.ProductResponseTest
+[2026-10-18T20:19:54.381Z] [INFO] Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 20.25 s -- in com.example.orderinventory.ApiIntegrationTest
+[2026-10-18T20:19:57.375Z] [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.882 s -- in com.example.orderinventory.FailurePathWebTest
+[2026-10-18T20:20:00.446Z] [INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.149 s -- in com.example.orderinventory.OrderConcurrencyTest
+[2026-10-18T20:20:00.699Z] [INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.163 s -- in com.example.orderinventory.RequestCorrelationTest
+[2026-10-18T20:20:00.950Z] [INFO] Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+[2026-10-18T20:20:04.755Z] [Coverage] No quality gates have been set - skipping
+[2026-10-18T20:20:54.367Z] [INFO] QUALITY GATE STATUS: PASSED - View details on http://127.0.0.1:9000/dashboard?id=order-inventory-backend
+[2026-10-18T20:21:31.394Z] 20:21:31.186 INFO  QUALITY GATE STATUS: PASSED - View details on http://127.0.0.1:9000/dashboard?id=order-inventory-frontend
+[2026-10-18T20:23:42.256Z] backend    2/2     2            2           85m
+[2026-10-18T20:23:42.256Z] frontend   2/2     2            2           85m
+[2026-10-18T20:25:37.240Z] Release healthy:
+[2026-10-18T20:25:37.792Z] backend    2       038215676861.dkr.ecr.ap-south-1.amazonaws.com/order-inventory-backend:7-ca5c22c
+[2026-10-18T20:25:37.792Z] frontend   2       038215676861.dkr.ecr.ap-south-1.amazonaws.com/order-inventory-frontend:7-ca5c22c
+[2026-10-18T20:25:40.039Z] + echo backend -> 038215676861.dkr.ecr.ap-south-1.amazonaws.com/order-inventory-backend:7-ca5c22c
+[2026-10-18T20:25:40.039Z] backend -> 038215676861.dkr.ecr.ap-south-1.amazonaws.com/order-inventory-backend:7-ca5c22c
+[2026-10-18T20:25:41.383Z] + echo frontend -> 038215676861.dkr.ecr.ap-south-1.amazonaws.com/order-inventory-frontend:7-ca5c22c
+[2026-10-18T20:25:41.383Z] frontend -> 038215676861.dkr.ecr.ap-south-1.amazonaws.com/order-inventory-frontend:7-ca5c22c
+[2026-10-18T20:25:46.981Z] {"database":"UP","status":"UP"}
+[2026-10-18T20:25:52.018Z] All 8 read-only checks passed against http://k8s-orderinv-orderinv-00335110a2-2009364498.ap-south-1.elb.amazonaws.com
+Finished: SUCCESS

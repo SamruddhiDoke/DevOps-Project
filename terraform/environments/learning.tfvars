@@ -5,7 +5,7 @@
 admin_cidr_blocks        = ["203.0.113.10/32"]
 create_jenkins           = false
 node_desired_size        = 1
-node_min_size            = 1
+node_min_size            = 0 # allows suspending to 0 nodes
 node_max_size            = 2
 db_backup_retention_days = 1
 monthly_budget_usd       = 100

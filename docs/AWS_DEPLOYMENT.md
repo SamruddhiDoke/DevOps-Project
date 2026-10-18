@@ -4,14 +4,25 @@ Deployed 2026-10-18/19 with the `order-inventory-deployer` IAM user (scoped poli
 `aws/iam/`), never the root key. Every item below was checked against AWS/Kubernetes, not only
 Terraform output. Evidence: [`evidence/`](evidence/).
 
+## Current state: evaluation mode (suspended between demos)
+
+Between demos the environment is **suspended**, not destroyed (`scripts/suspend-evaluation.sh`): no
+worker nodes, no ALB, Jenkins EC2 and RDS stopped; everything else is kept. One command restores and
+verifies it (`scripts/resume-evaluation.sh`, ≈ 10 minutes measured) and prints the application URL.
+Procedure, order of operations and troubleshooting: [RUNBOOKS.md §10](RUNBOOKS.md#10-suspend--resume-for-evaluation-keep-everything-pay-4day).
+Recovery manifest (IDs, release tag, sizes; no secrets): [`recovery/evaluation-manifest.json`](recovery/evaluation-manifest.json).
+
 ## Application endpoint
 
-**http://k8s-orderinv-orderinv-00335110a2-2009364498.ap-south-1.elb.amazonaws.com** (HTTP only; the
-hostname is assigned by the AWS Load Balancer Controller and changes if the Ingress is recreated —
-get it with `kubectl -n order-inventory get ingress order-inventory-ingress`).
+`http://<ALB hostname>` (HTTP only). The hostname is assigned by the AWS Load Balancer Controller and
+**changes every time the Ingress is recreated**, i.e. on every resume: the resume script prints it and
+stores it in the manifest (`application.currentUrl`); it can also be read with
+`kubectl -n order-inventory get ingress order-inventory-ingress`. Previous hostnames:
+`…-2009364498.ap-south-1.elb.amazonaws.com` (until 2026-10-19 suspend),
+`…-1122521152.ap-south-1.elb.amazonaws.com` (resume test 2026-10-19).
 
-Deployed release: images `order-inventory-{backend,frontend}:4-bf7450d` (Jenkins build #4, commit
-`bf7450d`), Helm release `order-inventory` (revision 7 after the rollback tests).
+Deployed release: the immutable tag recorded in the manifest (`application.lastKnownGoodTag`), built by
+Jenkins from GitHub (`7-ca5c22c` = build #7, commit `ca5c22c`).
 
 ## Architecture as deployed
 
@@ -49,8 +60,8 @@ flowchart LR
 | Group | Resources (key identifiers) | Billable while idle |
 |---|---|---|
 | Network | VPC `vpc-06635e7967e5c59ca`, 6 subnets (2 public, 2 app, 2 DB), IGW, NAT gateway + EIP `3.111.24.35`, 3 route tables | **NAT gateway, EIP** |
-| EKS | cluster `order-inventory-eks` 1.36 (KMS secrets encryption), managed node group 2× t3.medium, add-ons vpc-cni/coredns/kube-proxy/ebs-csi, OIDC provider | **control plane, 2 nodes + EBS** |
-| Load balancing | ALB + 2 target groups (created by the AWS LB Controller v3.6.0, IRSA role `order-inventory-aws-lbc-role`) | **ALB, 2 public IPv4** |
+| EKS | cluster `order-inventory-eks` 1.36 (KMS secrets encryption), managed node group 2× t3.medium (0 while suspended; min 0, max 3), add-ons vpc-cni/coredns/kube-proxy/ebs-csi, OIDC provider | **control plane, 2 nodes + EBS** |
+| Load balancing | ALB + 2 target groups (removed while suspended) (created by the AWS LB Controller v3.6.0, IRSA role `order-inventory-aws-lbc-role`) | **ALB, 2 public IPv4** |
 | Database | RDS `order-inventory-mysql` (8.4.11, db.t3.micro, 20 GB gp3, private DB subnets, parameter group `require_secure_transport=1`), log groups (14-day retention) | **instance + storage** |
 | CI/CD | Jenkins EC2 `i-03288b455e674765e` t3.large (IMDSv2, 30 GB encrypted gp3), IAM role/instance profile, EKS access entry (namespace `order-inventory`, edit) | **instance, EBS, public IPv4** |
 | Registry | ECR `order-inventory-backend`, `order-inventory-frontend` (immutable, scan on push, keep 20) — the unrelated `frontend` repository is untouched | storage (~150 MB) |
@@ -65,6 +76,15 @@ EKS $73.00 · 2× t3.medium $65.41 · t3.large $65.41 · NAT $40.88 + $0.056/GB 
 public IPv4 (NAT EIP, ALB ×2, Jenkins) $14.60 · EBS $6.38 · Secrets Manager $1.20 · KMS $1 ·
 13 alarms $1.30 · ECR/S3/logs < $1 → **≈ $311/month ≈ $0.43/hour.** Everything except ECR/S3 storage
 bills while idle. The Budget alerts at 80 % of $350 (actual) and 100 % (forecast).
+
+### Cost while suspended
+
+EKS control plane $73.00 · NAT $40.88 + its public IPv4 $3.65 · Jenkins EBS 30 GB $2.74 · RDS storage 20 GB
+≈ $2.62 (backups within the free allowance) · Secrets Manager $1.20 · KMS $1 · 9 alarms $0.90 · ECR/S3 <$0.50
+→ **≈ $126/month ≈ $4.15/day** (≈ $21 for 19 → 24 October). The EKS control plane cannot be paused.
+Removing the NAT gateway would save ≈ $1.50/day but nodes in the private subnets need it to join the
+cluster and pull from ECR (no VPC endpoints), so resume would depend on recreating it: kept deliberately.
+RDS restarts itself 7 days after a stop (date in the manifest); re-run the suspend script afterwards.
 
 ## How it was verified
 
@@ -81,20 +101,21 @@ bills while idle. The Budget alerts at 80 % of $350 (actual) and 100 % (forecast
 | Zero downtime / rollback | 9,532 requests through the ALB during 2 releases, a bad image, an unhealthy release and a restart: **0 non-200**; both failed releases detected (exit 1) and rolled back ([evidence](evidence/aws-zero-downtime-2026-10-19.txt)) |
 | Alert delivery | `set-alarm-state` on `order-inventory-rds-cpu-high` → SNS (KMS) → SQS message received with the expected alarm/state/metric; alarm restored to OK |
 | Budget | configured: $350, ACTUAL 80 % and FORECASTED 100 % → SNS (threshold not reached, so not triggered) |
+| Jenkins from GitHub | build #7 (manual trigger) cloned `github.com/SamruddhiDoke/DevOps-Project` @ `ca5c22c`: all gates, ECR push `7-ca5c22c`, Helm deploy, 8 ALB checks — SUCCESS |
+| Suspend | `suspend-evaluation.sh` exit 0 in 23 min (17 min of it EKS draining 2 nodes): ALB + target groups gone, 0 nodes, Jenkins/RDS stopped; independently re-checked; `terraform plan` while suspended → no infrastructure changes |
+| Resume | `resume-evaluation.sh` exit 0 in **9 min 14 s**: 2 nodes Ready, add-ons ready, RDS available, Helm rev 13 `7-ca5c22c` 2+2, new ALB + healthy targets, Flyway "up to date", 20/20 read/write smoke checks, 4 ALB alarms, Kibana available, Jenkins `/login` 200 |
 | ELK | ES/Kibana/Filebeat Ready, read-only root filesystems; failed order found by `requestId` with Kubernetes metadata; 7-day ILM; DB password in 0 documents ([evidence](evidence/elk-eks-2026-10-19.txt)) |
 
 ## Source of truth for Jenkins
 
-GitHub `origin/main` still carries the pre-remediation history (rewrite awaiting approval). Jenkins
-therefore checks out a bare mirror on the Jenkins host, `/srv/git/devops-project.git`, updated with:
-
-```bash
-GIT_SSH_COMMAND="ssh -i ~/Downloads/UniversalKey.pem -o IdentitiesOnly=yes" git push jenkins-mirror main
-```
-
-The job polls the mirror every 5 minutes. After the GitHub history is replaced, re-run
-`JENKINS_REPO_URL=https://github.com/SamruddhiDoke/DevOps-Project.git ./ansible/run-playbook.sh` to switch
-the job to GitHub (polling; a webhook additionally requires GitHub's hook IP ranges in `admin_cidr_blocks`).
+GitHub `https://github.com/SamruddhiDoke/DevOps-Project.git` (`main`, rewritten history pushed
+2026-10-19). The job is configured by Ansible/JCasC (`JENKINS_REPO_URL=… ./ansible/run-playbook.sh`) and
+**polls GitHub every 5 minutes**; build #7 cloned from GitHub and passed every stage including the EKS
+deploy ([evidence](evidence/jenkins-github-build-7-2026-10-19.txt)). A push webhook is not configured
+(Jenkins port 8080 is restricted to the admin /32; GitHub's hook ranges would have to be allowed).
+Consequence: after a resume, Jenkins builds and deploys any commit pushed while it was stopped
+(zero-downtime rolling update). The Jenkins public IP changes on every start (no Elastic IP); run
+`terraform apply -refresh-only` before `ansible/run-playbook.sh` so its inventory uses the new address.
 
 ## Teardown (stops all charges)
 

@@ -5,7 +5,7 @@
 admin_cidr_blocks     = ["203.0.113.10/32"]
 create_jenkins        = true
 node_desired_size     = 2
-node_min_size         = 1
+node_min_size         = 0 # allows suspending to 0 nodes (scripts/suspend-evaluation.sh)
 node_max_size         = 3
 jenkins_instance_type = "t3.large" # Jenkins + SonarQube on one host
 monthly_budget_usd    = 350

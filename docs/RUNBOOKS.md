@@ -172,3 +172,67 @@ container on the Jenkins EC2 host (Ansible role `sonarqube`, bound to 127.0.0.1:
 volumes) and the pipeline enforces its quality gate. Admin password: Secrets Manager
 `order-inventory/sonarqube-admin`; UI via `ssh -L 9000:127.0.0.1:9000 ubuntu@<jenkins-ip>`. If
 `SONAR_HOST_URL` is unset, the stage reports itself as skipped.
+
+## 10. Suspend / resume for evaluation (keep everything, pay ~$4/day)
+
+Between demos, suspend instead of destroying. Nothing is deleted: the cluster, node group definition,
+RDS data and backups, Jenkins disk, ECR images, secrets, KMS key, network and Terraform state stay.
+
+```powershell
+# Git Bash (or PowerShell: powershell -ExecutionPolicy Bypass -File scripts\suspend-evaluation.ps1)
+bash scripts/suspend-evaluation.sh --plan   # read-only: what would change
+bash scripts/suspend-evaluation.sh          # suspend
+bash scripts/resume-evaluation.sh           # restore + verify + print the URL (scripts\resume-evaluation.ps1)
+```
+
+Both scripts use the `order-inventory` profile (override with `AWS_PROFILE`), refuse the root user and
+the wrong account, log every step to `.deploy/evaluation-logs/`, stop with the failed stage and
+diagnostic commands on error, and are safe to re-run (each step checks the current state first).
+
+| Suspend step | Why this order |
+|---|---|
+| 1. Write `docs/recovery/evaluation-manifest.json` (running image tag, Helm revision, node group sizes, IDs; no secrets) | the resume script restores exactly this release |
+| 2. `helm upgrade --reuse-values --set ingress.enabled=false`, wait until the `k8s-orderinv` ALB and target groups are gone, delete the 4 ALB alarms | the Load Balancer Controller that deletes the ALB runs on the nodes, so this must happen before scaling to 0 |
+| 3. Scale backend/frontend and Elasticsearch/Kibana to 0 | lets nodes drain cleanly (no PersistentVolumes exist; ELK demo logs are on emptyDir and are discarded) |
+| 4. Node group `minSize=0, desiredSize=0` (maxSize kept), wait for 0 ASG instances | Terraform ignores `desired_size` and has `node_min_size = 0`, so a later `terraform plan` shows no change |
+| 5. Stop Jenkins EC2 | Jenkins home, jobs, plugins and SonarQube volumes are on the retained 30 GB encrypted root EBS volume |
+| 6. Stop RDS | storage, automated backups and point-in-time recovery are retained |
+
+Measured 2026-10-19: suspend **23 min** (17 of them EKS draining the nodes: system pods with
+PodDisruptionBudgets hold the drain until EKS's ~15-minute timeout), resume **9 min 14 s** to a fully
+verified environment. Re-running either script on an environment already in the target state only
+re-verifies it.
+
+**RDS 7-day limit:** AWS automatically starts a stopped RDS instance after 7 days. The manifest records
+the date (`rdsAutoRestartAfter`); re-run `suspend-evaluation.sh` after that date to stop it again
+(it is idempotent and will only stop RDS).
+
+Resume order: admin IP check (if your public IP changed, it rewrites the git-ignored
+`terraform/admin.auto.tfvars` and applies a plan **targeted** to the EKS public-access CIDRs and the two
+Jenkins SG rules, refusing any other change) → start RDS, Jenkins and the node group (min 1, desired 2)
+in parallel → nodes Ready → coredns, Load Balancer Controller, aws-node, kube-proxy ready → RDS
+available → `scripts/deploy-k8s.sh <registry> <manifest tag>` (Helm, chart defaults recreate the Ingress;
+automatic rollback on failure) → new ALB active, both target groups healthy, `/api/health` 200 →
+`/api/health/ready` 200, Flyway log lines, full read/write `smoke-test.sh` → ALB alarms recreated for
+the new ALB → ELK scaled back to 1, Kibana `/api/status` checked through `kubectl port-forward` → Jenkins
+`/login` 200 from the admin /32 and no `0.0.0.0/0` rule → manifest updated → URL printed.
+
+After a resume:
+
+- The **ALB hostname changes** (new load balancer); the script prints it.
+- The **Jenkins public IP changes** (no Elastic IP, to avoid its idle charge); the script prints it.
+  `terraform output jenkins_public_ip` stays stale until `terraform apply -refresh-only`, which
+  `ansible/run-playbook.sh` needs before it can reach the host.
+- Kibana and SonarQube stay private: `kubectl -n logging port-forward svc/kibana 5601:5601`,
+  `ssh -L 9000:127.0.0.1:9000 ubuntu@<jenkins-ip>`.
+
+Troubleshooting:
+
+| Symptom | Action |
+|---|---|
+| `cannot reach the Kubernetes API` during suspend | your IP changed; run `resume-evaluation.sh` (it updates the allowed /32) or edit `admin.auto.tfvars` |
+| ALB not deleted within 10 min | `kubectl -n kube-system logs deploy/aws-load-balancer-controller`; check the Ingress finalizer |
+| Nodes stay `NotReady` / pods `Pending` | `kubectl describe nodes`, `kubectl get events -A --sort-by=.lastTimestamp` |
+| RDS `incompatible-*` / stuck `starting` | `aws rds describe-events --source-identifier order-inventory-mysql --source-type db-instance` |
+| Deploy fails | `deploy-k8s.sh` already rolled back; `kubectl -n order-inventory logs deploy/backend`, then re-run resume |
+| Targets unhealthy | `aws elbv2 describe-target-health --target-group-arn …` and the backend readiness log |

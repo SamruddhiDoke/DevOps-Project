@@ -8,13 +8,15 @@ ELK logging.
 
 > **Status (2026-10-19): deployed and verified on AWS (ap-south-1).** Jenkins on EC2 (configured by Ansible)
 > ran the full pipeline — tests, SonarQube quality gate, Trivy gates, ECR push, Helm deploy to EKS, health checks
-> through the ALB (build #4). Through the public ALB: 20/20 read/write smoke checks against RDS; 9,532 requests
+> through the ALB (build #4; build #7 from GitHub). Through the public ALB: 20/20 read/write smoke checks against RDS; 9,532 requests
 > with **0 errors** during two releases, a bad-image release, an unhealthy release (both auto-rolled back) and a
 > restart. Alerts proven CloudWatch → SNS → SQS; logs searchable in ELK on EKS. Evidence and the remaining
 > open items: [docs/TESTING.md](docs/TESTING.md), deployment record: [docs/AWS_DEPLOYMENT.md](docs/AWS_DEPLOYMENT.md).
 >
-> Application: http://k8s-orderinv-orderinv-00335110a2-2009364498.ap-south-1.elb.amazonaws.com (while the
-> environment is running; ≈ $0.43/hour — tear it down when not needed).
+> **Evaluation mode:** between demos the environment is suspended (no nodes, no ALB, Jenkins/RDS stopped,
+> ≈ $4/day; nothing deleted). Restore + verify with one command, `bash scripts/resume-evaluation.sh`
+> (≈ 10 min, prints the application URL — the ALB hostname changes on every resume); suspend again with
+> `bash scripts/suspend-evaluation.sh`. See [docs/RUNBOOKS.md §10](docs/RUNBOOKS.md#10-suspend--resume-for-evaluation-keep-everything-pay-4day).
 
 ---
 
@@ -239,7 +241,7 @@ Provisioning, cluster bootstrap, Ansible, deployment and teardown: [docs/RUNBOOK
 | Secrets Manager (3), extra alarms | $0.40/secret, $0.10/alarm | ≈ $2.40 | ≈ $1.60 |
 | **Total** | | **≈ $311/month ≈ $0.43/h** | **≈ $204/month ≈ $0.28/h** |
 
-A 4-hour demo costs about **$1.20–$1.80**. EKS, NAT and the ALB dominate; **destroy after use**
+A 4-hour demo costs about **$1.20–$1.80**. EKS, NAT and the ALB dominate; **suspend (≈ $4/day, `scripts/suspend-evaluation.sh`) or destroy after use**
 (teardown order in the runbook — delete the Ingress before `terraform destroy`). An AWS Budget with email
 alerts is created when `alert_email` is set.
 

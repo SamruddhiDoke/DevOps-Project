@@ -403,6 +403,12 @@ resource "aws_eks_node_group" "main" {
     max_unavailable = 1
   }
 
+  # The node count is changed at runtime by scripts/suspend-evaluation.sh (0 nodes) and
+  # scripts/resume-evaluation.sh (back to node_desired_size); Terraform must not revert it.
+  lifecycle {
+    ignore_changes = [scaling_config[0].desired_size]
+  }
+
   depends_on = [
     aws_iam_role_policy_attachment.eks_worker_node_policy,
     aws_iam_role_policy_attachment.eks_cni_policy,
