@@ -13,6 +13,63 @@ resource "aws_sns_topic" "alerts" {
   }
 }
 
+# Who may publish: CloudWatch alarms and AWS Budgets from this account
+resource "aws_sns_topic_policy" "alerts" {
+  arn = aws_sns_topic.alerts.arn
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AccountOwner"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = ["SNS:Publish", "SNS:Subscribe", "SNS:GetTopicAttributes", "SNS:SetTopicAttributes", "SNS:ListSubscriptionsByTopic"]
+        Resource  = aws_sns_topic.alerts.arn
+      },
+      {
+        Sid       = "AlarmAndBudgetPublishers"
+        Effect    = "Allow"
+        Principal = { Service = ["cloudwatch.amazonaws.com", "budgets.amazonaws.com"] }
+        Action    = "SNS:Publish"
+        Resource  = aws_sns_topic.alerts.arn
+        Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id } }
+      }
+    ]
+  })
+}
+
+# Audit/verification queue: every alert is also delivered here (retained 4 days), so delivery can
+# be proven without a mailbox and alert history can be inspected with the CLI.
+resource "aws_sqs_queue" "alerts_audit" {
+  count                     = var.create_alert_audit_queue ? 1 : 0
+  name                      = "${var.project_name}-alerts-audit"
+  message_retention_seconds = 345600
+  kms_master_key_id         = aws_kms_key.app.id
+}
+
+resource "aws_sqs_queue_policy" "alerts_audit" {
+  count     = var.create_alert_audit_queue ? 1 : 0
+  queue_url = aws_sqs_queue.alerts_audit[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.alerts_audit[0].arn
+      Condition = { ArnEquals = { "aws:SourceArn" = aws_sns_topic.alerts.arn } }
+    }]
+  })
+}
+
+resource "aws_sns_topic_subscription" "alerts_audit" {
+  count                = var.create_alert_audit_queue ? 1 : 0
+  topic_arn            = aws_sns_topic.alerts.arn
+  protocol             = "sqs"
+  endpoint             = aws_sqs_queue.alerts_audit[0].arn
+  raw_message_delivery = false
+}
+
 resource "aws_sns_topic_subscription" "alerts_email" {
   count     = var.alert_email == "" ? 0 : 1
   topic_arn = aws_sns_topic.alerts.arn
@@ -170,19 +227,21 @@ resource "aws_cloudwatch_log_group" "rds" {
 # AWS Budgets: the first two action-free budgets per account are free.
 
 resource "aws_budgets_budget" "monthly" {
-  count        = var.alert_email == "" ? 0 : 1
   name         = "${var.project_name}-monthly"
   budget_type  = "COST"
   limit_amount = tostring(var.monthly_budget_usd)
   limit_unit   = "USD"
-  time_unit    = "MONTHLY"
+
+  depends_on = [aws_sns_topic_policy.alerts]
+  time_unit  = "MONTHLY"
 
   notification {
     comparison_operator        = "GREATER_THAN"
     threshold                  = 80
     threshold_type             = "PERCENTAGE"
     notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.alert_email]
+    subscriber_sns_topic_arns  = [aws_sns_topic.alerts.arn]
+    subscriber_email_addresses = var.alert_email == "" ? [] : [var.alert_email]
   }
 
   notification {
@@ -190,6 +249,7 @@ resource "aws_budgets_budget" "monthly" {
     threshold                  = 100
     threshold_type             = "PERCENTAGE"
     notification_type          = "FORECASTED"
-    subscriber_email_addresses = [var.alert_email]
+    subscriber_sns_topic_arns  = [aws_sns_topic.alerts.arn]
+    subscriber_email_addresses = var.alert_email == "" ? [] : [var.alert_email]
   }
 }

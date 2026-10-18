@@ -1,0 +1,118 @@
+---
+# SonarQube Community as a container on the Jenkins host, bound to localhost only
+# (Jenkins reaches it on 127.0.0.1; admins use an SSH tunnel). Data persists in Docker volumes.
+
+- name: Require the SonarQube admin password
+  ansible.builtin.assert:
+    that: sonarqube_admin_password | length >= 12
+    fail_msg: "Pass -e sonarqube_admin_password=<generated secret> (see docs/RUNBOOKS.md)"
+    quiet: true
+
+- name: Kernel settings required by SonarQube's embedded Elasticsearch
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-sonarqube.conf
+    state: present
+    reload: true
+  loop:
+    - { name: vm.max_map_count, value: "524288" }
+    - { name: fs.file-max, value: "131072" }
+
+- name: Install the Docker SDK for Python (used by the container module)
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+
+- name: Run SonarQube
+  community.docker.docker_container:
+    name: sonarqube
+    image: "{{ sonarqube_image }}"
+    restart_policy: unless-stopped
+    published_ports:
+      - "127.0.0.1:{{ sonarqube_port }}:9000"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+    env:
+      SONAR_WEB_JAVAOPTS: "-Xmx512m"
+      SONAR_CE_JAVAOPTS: "-Xmx512m"
+      SONAR_SEARCH_JAVAOPTS: "-Xmx512m -Xms512m"
+    state: started
+
+- name: Wait for SonarQube to be UP
+  ansible.builtin.uri:
+    url: "{{ sonarqube_url }}/api/system/status"
+    return_content: true
+  register: sonarqube_status
+  retries: 60
+  delay: 10
+  until: sonarqube_status.json is defined and sonarqube_status.json.status == "UP"
+
+- name: Check whether the admin password is already set
+  ansible.builtin.uri:
+    url: "{{ sonarqube_url }}/api/authentication/validate"
+    user: admin
+    password: "{{ sonarqube_admin_password }}"
+    force_basic_auth: true
+    return_content: true
+  register: sonarqube_auth
+  no_log: true
+
+- name: Replace the factory default admin password
+  ansible.builtin.uri:
+    url: "{{ sonarqube_url }}/api/users/change_password"
+    method: POST
+    user: admin
+    password: admin # SonarQube's documented factory default, replaced here  # gitleaks:allow
+    force_basic_auth: true
+    body_format: form-urlencoded
+    body:
+      login: admin
+      previousPassword: admin # gitleaks:allow
+      password: "{{ sonarqube_admin_password }}"
+    status_code: [204]
+  when: not sonarqube_auth.json.valid
+  no_log: true
+  changed_when: true
+
+- name: Create the secrets directory for Jenkins
+  ansible.builtin.file:
+    path: /etc/jenkins-secrets
+    state: directory
+    owner: root
+    group: jenkins
+    mode: "0750"
+
+- name: Check for an existing analysis token
+  ansible.builtin.stat:
+    path: "{{ sonarqube_token_file }}"
+  register: sonarqube_token_stat
+
+- name: Generate an analysis token for Jenkins
+  ansible.builtin.uri:
+    url: "{{ sonarqube_url }}/api/user_tokens/generate"
+    method: POST
+    user: admin
+    password: "{{ sonarqube_admin_password }}"
+    force_basic_auth: true
+    body_format: form-urlencoded
+    body:
+      name: "jenkins-{{ ansible_date_time.epoch }}"
+      type: GLOBAL_ANALYSIS_TOKEN
+    return_content: true
+  register: sonarqube_token
+  when: not sonarqube_token_stat.stat.exists
+  no_log: true
+
+- name: Store the analysis token (readable by Jenkins only)
+  ansible.builtin.copy:
+    dest: "{{ sonarqube_token_file }}"
+    content: "{{ sonarqube_token.json.token }}"
+    owner: root
+    group: jenkins
+    mode: "0640"
+  when: not sonarqube_token_stat.stat.exists
+  no_log: true
+  notify: Restart jenkins

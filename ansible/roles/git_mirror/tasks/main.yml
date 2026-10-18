@@ -1,0 +1,19 @@
+---
+# Bare Git repository on the Jenkins host. Jenkins checks out from here while GitHub still carries
+# the pre-remediation history; push with:  git push jenkins-mirror main
+# Switch the job back to GitHub by setting jenkins_repo_url once the rewritten history is published.
+
+- name: Create the mirror directory
+  ansible.builtin.file:
+    path: /srv/git
+    state: directory
+    owner: "{{ ansible_user | default('ubuntu') }}"
+    group: jenkins
+    mode: "0755"
+
+- name: Initialise the bare repository
+  ansible.builtin.command: git init --bare --initial-branch=main /srv/git/devops-project.git
+  args:
+    creates: /srv/git/devops-project.git/HEAD
+  become: true
+  become_user: "{{ ansible_user | default('ubuntu') }}"

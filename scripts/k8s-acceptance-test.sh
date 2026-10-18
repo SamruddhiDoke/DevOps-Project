@@ -73,7 +73,7 @@ fi
 kubectl apply -f "$REPO_ROOT/k8s/testing/mysql-test-fixture.yaml" >/dev/null
 kubectl -n oi-testdb rollout status deploy/mysql --timeout=5m >/dev/null
 APP_PW="$(kubectl -n oi-testdb get secret mysql-test-credentials -o jsonpath='{.data.MYSQL_PASSWORD}' | base64 -d)"
-DB_HOST=mysql.oi-testdb.svc.cluster.local DB_USER=inventory TF_VAR_db_password="$APP_PW" \
+DB_HOST=mysql.oi-testdb.svc.cluster.local DB_USER=inventory DB_PASSWORD="$APP_PW" \
   "$REPO_ROOT/scripts/create-db-secret.sh" >/dev/null
 # create-db-secret.sh requires TLS (as RDS does); the MySQL 8.4 image serves TLS by default.
 ok "fixtures ready (test DB on a persistent volume, secret generated at run time)"

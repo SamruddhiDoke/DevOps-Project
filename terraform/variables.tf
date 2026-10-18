@@ -34,6 +34,12 @@ variable "public_subnet_cidrs" {
   default     = ["10.0.1.0/24", "10.0.2.0/24"]
 }
 
+variable "database_subnet_cidrs" {
+  description = "CIDR blocks for the 2 private database subnets (RDS only; no internet route)"
+  type        = list(string)
+  default     = ["10.0.21.0/24", "10.0.22.0/24"]
+}
+
 variable "private_subnet_cidrs" {
   description = "CIDR blocks for the 2 private subnets"
   type        = list(string)
@@ -111,17 +117,6 @@ variable "db_backup_retention_days" {
   default     = 7
 }
 
-variable "db_password" {
-  description = "RDS master password. No default: supply via TF_VAR_db_password (never commit it). 8-41 printable ASCII characters, excluding '/', '@', '\"' and spaces."
-  type        = string
-  sensitive   = true
-
-  validation {
-    condition     = length(var.db_password) >= 12 && length(var.db_password) <= 41 && !can(regex("[/@\" ]", var.db_password))
-    error_message = "db_password must be 12-41 characters and must not contain '/', '@', '\"' or spaces."
-  }
-}
-
 # -----------------------------------------------------------------------------
 # Jenkins
 # -----------------------------------------------------------------------------
@@ -167,6 +162,12 @@ variable "log_retention_days" {
   description = "CloudWatch Logs retention for AWS-side log groups created by this configuration"
   type        = number
   default     = 14
+}
+
+variable "create_alert_audit_queue" {
+  description = "Subscribe an SQS queue to the alert topic so notification delivery can be verified (and audited) without email"
+  type        = bool
+  default     = true
 }
 
 variable "alert_email" {

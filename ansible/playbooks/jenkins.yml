@@ -10,6 +10,12 @@
     - docker
     - build_tools
     - jenkins
+    - role: git_mirror
+      when: jenkins_casc_allow_local_checkout | default(false) | bool
+    - role: sonarqube
+      when: sonarqube_admin_password | default('') | length > 0
+    - role: jenkins_casc
+      when: jenkins_casc_admin_password | default('') | length > 0
 
   post_tasks:
     - name: Verify toolchain versions (first line of each version banner; java prints to stderr)

@@ -16,7 +16,8 @@ REGION="${AWS_REGION:-ap-south-1}"
 helm repo add eks https://aws.github.io/eks-charts >/dev/null 2>&1 || true
 helm repo update eks >/dev/null
 
-helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+# Chart 3.6.0 = controller v3.6.0; k8s/iam_policy.json matches its official policy (verified 2026-10-18)
+helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller --version 3.6.0 \
   --namespace kube-system \
   --set clusterName="$CLUSTER_NAME" \
   --set region="$REGION" \

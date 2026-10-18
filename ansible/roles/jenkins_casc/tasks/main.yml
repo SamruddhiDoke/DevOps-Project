@@ -1,0 +1,101 @@
+---
+# Jenkins configuration as code: plugins, admin user, SonarQube credential, the pipeline job and
+# global environment. Secrets are passed at run time and stored only in a root:jenkins 0640 file.
+
+- name: Require the Jenkins admin password
+  ansible.builtin.assert:
+    that: jenkins_casc_admin_password | length >= 12
+    fail_msg: "Pass -e jenkins_casc_admin_password=<generated secret> (see docs/RUNBOOKS.md)"
+    quiet: true
+
+- name: Download the Jenkins plugin installation manager
+  ansible.builtin.get_url:
+    url: "https://github.com/jenkinsci/plugin-installation-manager-tool/releases/download/{{ jenkins_casc_plugin_manager_version }}/jenkins-plugin-manager-{{ jenkins_casc_plugin_manager_version }}.jar"
+    dest: "/opt/jenkins-plugin-manager-{{ jenkins_casc_plugin_manager_version }}.jar"
+    mode: "0644"
+
+- name: Write the plugin list
+  ansible.builtin.copy:
+    dest: /var/lib/jenkins/plugins.txt
+    content: "{{ jenkins_casc_plugins | join('\n') }}\n"
+    owner: jenkins
+    group: jenkins
+    mode: "0644"
+  register: jenkins_casc_plugin_list
+
+- name: Install plugins (and dependencies) compatible with the installed Jenkins
+  ansible.builtin.command: >
+    java -jar /opt/jenkins-plugin-manager-{{ jenkins_casc_plugin_manager_version }}.jar
+    --war /usr/share/java/jenkins.war
+    --plugin-download-directory /var/lib/jenkins/plugins
+    --plugin-file /var/lib/jenkins/plugins.txt
+  become: true
+  become_user: jenkins
+  when: jenkins_casc_plugin_list.changed
+  changed_when: true
+  notify: Restart jenkins
+
+- name: Render configuration as code
+  ansible.builtin.template:
+    src: casc.yaml.j2
+    dest: /var/lib/jenkins/casc.yaml
+    owner: jenkins
+    group: jenkins
+    mode: "0640"
+  notify: Restart jenkins
+
+- name: Create the secrets directory for Jenkins
+  ansible.builtin.file:
+    path: /etc/jenkins-secrets
+    state: directory
+    owner: root
+    group: jenkins
+    mode: "0750"
+
+- name: Read the SonarQube analysis token (if SonarQube is configured)
+  ansible.builtin.slurp:
+    src: /etc/jenkins-secrets/sonar_token
+  register: jenkins_casc_sonar_token
+  failed_when: false
+  no_log: true
+
+- name: Write the Jenkins secrets environment file
+  ansible.builtin.copy:
+    dest: /etc/jenkins-secrets/jenkins.env
+    content: |
+      JENKINS_ADMIN_PASSWORD={{ jenkins_casc_admin_password }}
+      SONAR_TOKEN={{ (jenkins_casc_sonar_token.content | default('') | b64decode) if jenkins_casc_sonar_token.content is defined else 'not-configured' }}
+    owner: root
+    group: jenkins
+    mode: "0640"
+  no_log: true
+  notify: Restart jenkins
+
+- name: Configure the Jenkins service (configuration as code, no setup wizard)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/jenkins.service.d/override.conf
+    content: |
+      [Service]
+      Environment="JAVA_OPTS=-Djava.awt.headless=true -Djenkins.install.runSetupWizard=false{{ ' -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true' if jenkins_casc_allow_local_checkout else '' }}"
+      Environment="CASC_JENKINS_CONFIG=/var/lib/jenkins/casc.yaml"
+      EnvironmentFile=/etc/jenkins-secrets/jenkins.env
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart jenkins
+
+- name: Apply pending restarts
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Jenkins with the managed configuration
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8080/job/order-inventory/api/json
+    user: admin
+    password: "{{ jenkins_casc_admin_password }}"
+    force_basic_auth: true
+    status_code: 200
+  register: jenkins_casc_job
+  retries: 30
+  delay: 10
+  until: jenkins_casc_job.status == 200
+  no_log: true

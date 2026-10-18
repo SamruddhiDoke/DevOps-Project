@@ -261,3 +261,33 @@ resource "aws_eks_access_policy_association" "jenkins" {
     aws_eks_access_entry.jenkins
   ]
 }
+
+# ============================================================
+# Generated admin passwords for Jenkins and SonarQube (read by ansible/run-playbook.sh;
+# never typed, printed or committed). Retrieve when needed with:
+#   aws secretsmanager get-secret-value --secret-id order-inventory/jenkins-admin --query SecretString --output text
+# ============================================================
+
+resource "random_password" "ci_admin" {
+  for_each         = var.create_jenkins ? toset(["jenkins-admin", "sonarqube-admin"]) : toset([])
+  length           = 28
+  special          = true
+  override_special = "!#%*-_=+:?"
+  min_special      = 1
+  min_upper        = 1
+  min_lower        = 1
+  min_numeric      = 1
+}
+
+resource "aws_secretsmanager_secret" "ci_admin" {
+  for_each                = random_password.ci_admin
+  name                    = "${var.project_name}/${each.key}"
+  description             = "Generated ${each.key} password for the CI server"
+  recovery_window_in_days = 7
+}
+
+resource "aws_secretsmanager_secret_version" "ci_admin" {
+  for_each      = random_password.ci_admin
+  secret_id     = aws_secretsmanager_secret.ci_admin[each.key].id
+  secret_string = each.value.result
+}

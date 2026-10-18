@@ -95,3 +95,13 @@ output "alerts_sns_topic_arn" {
   description = "SNS topic receiving CloudWatch alarm notifications"
   value       = aws_sns_topic.alerts.arn
 }
+
+output "db_secret_arn" {
+  description = "Secrets Manager secret holding the RDS master credentials (read by scripts/create-db-secret.sh)"
+  value       = aws_secretsmanager_secret.db_master.arn
+}
+
+output "alerts_audit_queue_url" {
+  description = "SQS queue receiving a copy of every alert (verification/audit)"
+  value       = var.create_alert_audit_queue ? aws_sqs_queue.alerts_audit[0].url : null
+}

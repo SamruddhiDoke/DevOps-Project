@@ -1,0 +1,22 @@
+---
+jenkins_casc_plugin_manager_version: "2.15.0"
+jenkins_casc_plugins:
+  - workflow-aggregator
+  - pipeline-model-definition
+  - git
+  - junit
+  - timestamper
+  - coverage
+  - configuration-as-code
+  - credentials-binding
+  - job-dsl
+  - matrix-auth
+
+# Configuration as code (set at run time; secrets never committed)
+
+jenkins_casc_admin_password: ""
+jenkins_casc_repo_url: "https://github.com/SamruddhiDoke/DevOps-Project.git"
+jenkins_casc_allow_local_checkout: false
+jenkins_casc_ci_reports_bucket: ""
+jenkins_casc_sonar_host_url: ""
+jenkins_casc_poll_scm: "H/5 * * * *"

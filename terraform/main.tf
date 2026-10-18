@@ -9,6 +9,10 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 
   # State is local by default. For team use, migrate it to S3 with locking:
@@ -620,13 +624,63 @@ resource "aws_vpc_security_group_ingress_rule" "rds_mysql" {
   description                  = "MySQL from EKS nodes/pods"
 }
 
+# Dedicated database subnets: no route to the internet (local VPC traffic only)
+resource "aws_subnet" "database" {
+  count             = length(var.database_subnet_cidrs)
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.database_subnet_cidrs[count.index]
+  availability_zone = var.availability_zones[count.index]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-database-subnet-${count.index + 1}"
+    Type = "Database"
+  }
+}
+
+resource "aws_route_table" "database" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-database-rt"
+  }
+}
+
+resource "aws_route_table_association" "database" {
+  count          = length(var.database_subnet_cidrs)
+  subnet_id      = aws_subnet.database[count.index].id
+  route_table_id = aws_route_table.database.id
+}
+
+# Master password generated here (never typed, committed or reused) and stored in Secrets
+# Manager, from which scripts/create-db-secret.sh reads it. It is also kept in the encrypted
+# remote state, which is why the state bucket is private, encrypted and TLS-only.
+resource "random_password" "db_master" {
+  length           = 32
+  special          = true
+  override_special = "!#%^*()-_=+[]{}<>:?"
+}
+
+resource "aws_secretsmanager_secret" "db_master" {
+  name                    = "${var.project_name}/rds-master"
+  description             = "RDS MySQL master credentials for the order-inventory application"
+  recovery_window_in_days = 7
+}
+
+resource "aws_secretsmanager_secret_version" "db_master" {
+  secret_id = aws_secretsmanager_secret.db_master.id
+  secret_string = jsonencode({
+    username = var.db_username
+    password = random_password.db_master.result
+    host     = aws_db_instance.mysql.address
+    port     = aws_db_instance.mysql.port
+    dbname   = aws_db_instance.mysql.db_name
+  })
+}
+
 resource "aws_db_subnet_group" "mysql" {
   name = "${var.project_name}-mysql-subnet-group"
 
-  subnet_ids = [
-    aws_subnet.private[0].id,
-    aws_subnet.private[1].id
-  ]
+  subnet_ids = aws_subnet.database[*].id
 
   tags = {
     Name = "${var.project_name}-mysql-subnet-group"
@@ -674,7 +728,7 @@ resource "aws_db_instance" "mysql" {
 
   db_name  = "order_inventory_db"
   username = var.db_username
-  password = var.db_password
+  password = random_password.db_master.result
 
   db_subnet_group_name   = aws_db_subnet_group.mysql.name
   vpc_security_group_ids = [aws_security_group.rds.id]

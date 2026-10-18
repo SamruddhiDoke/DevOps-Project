@@ -21,6 +21,12 @@
     append: true
   notify: Restart jenkins
 
+- name: Create the systemd drop-in directory for Jenkins
+  ansible.builtin.file:
+    path: /etc/systemd/system/jenkins.service.d
+    state: directory
+    mode: "0755"
+
 - name: Ensure Jenkins is enabled and running
   ansible.builtin.service:
     name: jenkins

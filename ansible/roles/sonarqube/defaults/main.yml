@@ -1,0 +1,7 @@
+---
+sonarqube_image: "sonarqube:26.10.0.133078-community"
+sonarqube_port: 9000
+sonarqube_url: "http://127.0.0.1:{{ sonarqube_port }}"
+# Supplied at run time (never committed): -e sonarqube_admin_password=...
+sonarqube_admin_password: ""
+sonarqube_token_file: /etc/jenkins-secrets/sonar_token

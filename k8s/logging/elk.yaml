@@ -1,0 +1,224 @@
+# Centralized logging for the EKS deployment, running on the existing worker nodes (no extra AWS
+# resources). Demo-sized: single-node Elasticsearch on an emptyDir (logs survive pod restarts on the
+# same node only), Kibana reachable via `kubectl port-forward`, Filebeat DaemonSet shipping only the
+# order-inventory namespace. Retention: 7 days (ILM). Scale ES/Kibana to 0 when not needed:
+#   kubectl -n logging scale deploy/elasticsearch deploy/kibana --replicas=0
+# Install (cluster admin): kubectl apply -f k8s/logging/elk.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: elasticsearch }
+  template:
+    metadata:
+      labels: { app: elasticsearch }
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
+          env:
+            - { name: discovery.type, value: single-node }
+            - { name: xpack.security.enabled, value: "false" }
+            - { name: ES_JAVA_OPTS, value: "-Xms512m -Xmx512m" }
+            # emptyDir on the node root volume: avoid read-only index blocks at the default 85-95 % watermarks
+            - { name: cluster.routing.allocation.disk.threshold_enabled, value: "false" }
+          ports:
+            - containerPort: 9200
+          readinessProbe:
+            httpGet: { path: /_cluster/health?local=true, port: 9200 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 200m, memory: 1Gi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: data, mountPath: /usr/share/elasticsearch/data }
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: logging
+spec:
+  selector: { app: elasticsearch }
+  ports:
+    - port: 9200
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: kibana }
+  template:
+    metadata:
+      labels: { app: kibana }
+    spec:
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:8.19.5
+          env:
+            - { name: ELASTICSEARCH_HOSTS, value: "http://elasticsearch.logging.svc.cluster.local:9200" }
+            - { name: NODE_OPTIONS, value: "--max-old-space-size=512" }
+          ports:
+            - containerPort: 5601
+          readinessProbe:
+            httpGet: { path: /api/status, port: 5601 }
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests: { cpu: 100m, memory: 768Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: logging
+spec:
+  selector: { app: kibana }
+  ports:
+    - port: 5601
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: logging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, pods, nodes]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: logging
+roleRef:
+  kind: ClusterRole
+  name: filebeat
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: logging
+data:
+  filebeat.yml: |
+    filebeat.inputs:
+      - type: filestream
+        id: order-inventory-containers
+        paths:
+          - /var/log/containers/*_order-inventory_*.log
+        parsers:
+          - container: ~
+        prospector.scanner.symlinks: true
+        processors:
+          - add_kubernetes_metadata:
+              host: ${NODE_NAME}
+              matchers:
+                - logs_path:
+                    logs_path: /var/log/containers/
+    processors:
+      # Backend lines are ECS JSON (LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs); nginx lines stay plain text
+      - decode_json_fields:
+          fields: ["message"]
+          target: ""
+          overwrite_keys: true
+          add_error_key: false
+          when:
+            regexp:
+              message: '^\{'
+      - add_fields:
+          target: ""
+          fields:
+            app: order-inventory
+    output.elasticsearch:
+      hosts: ["http://elasticsearch.logging.svc.cluster.local:9200"]
+    setup.ilm.enabled: true
+    setup.ilm.policy_name: order-inventory-logs
+    setup.ilm.policy_file: /usr/share/filebeat/ilm/ilm-policy.json
+    setup.ilm.overwrite: true
+    logging.level: warning
+  ilm-policy.json: |
+    {"policy":{"phases":{"hot":{"actions":{"rollover":{"max_age":"1d","max_primary_shard_size":"1gb"}}},
+     "delete":{"min_age":"7d","actions":{"delete":{}}}}}}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat
+  namespace: logging
+spec:
+  selector:
+    matchLabels: { app: filebeat }
+  template:
+    metadata:
+      labels: { app: filebeat }
+    spec:
+      serviceAccountName: filebeat
+      containers:
+        - name: filebeat
+          image: docker.elastic.co/beats/filebeat:8.19.5
+          args: ["-c", "/etc/filebeat.yml", "-e"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef: { fieldPath: spec.nodeName }
+          # Root is needed to read the node's container log files (mounted read-only)
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+          resources:
+            requests: { cpu: 50m, memory: 100Mi }
+            limits: { cpu: 500m, memory: 200Mi }
+          volumeMounts:
+            - { name: config, mountPath: /etc/filebeat.yml, subPath: filebeat.yml, readOnly: true }
+            - { name: config, mountPath: /usr/share/filebeat/ilm/ilm-policy.json, subPath: ilm-policy.json, readOnly: true }
+            - { name: data, mountPath: /usr/share/filebeat/data }
+            - { name: varlogcontainers, mountPath: /var/log/containers, readOnly: true }
+            - { name: varlogpods, mountPath: /var/log/pods, readOnly: true }
+      volumes:
+        - name: config
+          configMap: { name: filebeat-config }
+        - name: data
+          hostPath: { path: /var/lib/filebeat-data, type: DirectoryOrCreate }
+        - name: varlogcontainers
+          hostPath: { path: /var/log/containers }
+        - name: varlogpods
+          hostPath: { path: /var/log/pods }

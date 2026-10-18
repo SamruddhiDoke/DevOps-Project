@@ -1,0 +1,61 @@
+# Managed by Ansible (roles/jenkins). Secrets are read from environment variables that come from
+# /etc/jenkins-secrets/jenkins.env (root:jenkins 0640); none are stored in this file.
+jenkins:
+  systemMessage: "Order & Inventory CI/CD (configuration as code, managed by Ansible)"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    globalMatrix:
+      entries:
+        - user:
+            name: admin
+            permissions: ["Overall/Administer"]
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: CI_REPORTS_BUCKET
+            value: "{{ jenkins_casc_ci_reports_bucket }}"
+          - key: SONAR_HOST_URL
+            value: "{{ jenkins_casc_sonar_host_url }}"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: sonarqube-token
+              description: SonarQube analysis token
+              secret: "${SONAR_TOKEN}"
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+
+jobs:
+  - script: >
+      pipelineJob('order-inventory') {
+        properties {
+          pipelineTriggers {
+            triggers {
+              pollSCM { scmpoll_spec('{{ jenkins_casc_poll_scm }}') }
+            }
+          }
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('{{ jenkins_casc_repo_url }}') }
+                branch('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile')
+          }
+        }
+      }

@@ -17,12 +17,23 @@ data "aws_iam_policy_document" "app_kms" {
   }
 
   statement {
-    sid       = "CloudWatchAlarmsPublishToEncryptedSns"
+    sid       = "AlarmAndBudgetPublishersUseKeyForEncryptedSns"
     actions   = ["kms:Decrypt", "kms:GenerateDataKey*"]
     resources = ["*"]
     principals {
       type        = "Service"
-      identifiers = ["cloudwatch.amazonaws.com"]
+      identifiers = ["cloudwatch.amazonaws.com", "budgets.amazonaws.com"]
+    }
+  }
+
+  # SNS must decrypt messages to deliver them to the encrypted SQS audit queue
+  statement {
+    sid       = "SnsDeliversToEncryptedSqs"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*"]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["sns.amazonaws.com"]
     }
   }
 }
