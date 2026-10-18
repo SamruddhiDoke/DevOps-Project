@@ -1,0 +1,9 @@
+Order & Inventory {{ .Values.image.tag }} deployed to namespace {{ .Release.Namespace }} (Helm revision {{ .Release.Revision }}).
+
+  kubectl -n {{ .Release.Namespace }} get pods,svc{{ if .Values.ingress.enabled }},ingress{{ end }}
+{{- if .Values.ingress.enabled }}
+  ALB hostname: kubectl -n {{ .Release.Namespace }} get ingress order-inventory-ingress -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+{{- else }}
+  Local access: kubectl -n {{ .Release.Namespace }} port-forward svc/frontend 18000:80
+{{- end }}
+  Rollback:     helm -n {{ .Release.Namespace }} rollback {{ .Release.Name }}

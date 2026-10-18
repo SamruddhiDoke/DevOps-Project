@@ -1,0 +1,18 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- range $app := list "backend" "frontend" }}
+---
+# Keep at least one replica running during node drains / cluster upgrades
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $app }}
+  labels:
+    app: {{ $app }}
+    {{- include "oi.labels" $ | nindent 4 }}
+spec:
+  minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ $app }}
+{{- end }}
+{{- end }}

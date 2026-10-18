@@ -1,0 +1,68 @@
+# Disposable MySQL for LOCAL cluster acceptance tests only (scripts/k8s-acceptance-test.sh).
+# Never used on EKS (RDS is used there). Credentials come from the mysql-test-credentials
+# Secret, which the test script generates with a random password at run time.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: oi-testdb
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-data
+  namespace: oi-testdb
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: oi-testdb
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: mysql }
+  template:
+    metadata:
+      labels: { app: mysql }
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          envFrom:
+            - secretRef:
+                name: mysql-test-credentials
+          env:
+            - name: MYSQL_DATABASE
+              value: order_inventory_db
+            - name: MYSQL_USER
+              value: inventory
+          ports:
+            - containerPort: 3306
+          readinessProbe:
+            exec:
+              command: ["mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mysql-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: oi-testdb
+spec:
+  selector: { app: mysql }
+  ports:
+    - port: 3306

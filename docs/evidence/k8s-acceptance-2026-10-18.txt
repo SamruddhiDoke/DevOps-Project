@@ -1,0 +1,40 @@
+Command : ./scripts/k8s-acceptance-test.sh
+Cluster : minikube v1.38.1 (local), Helm v4.2.3, kubectl v1.34.1
+Images  : local/order-inventory-{backend,frontend}:{v1,v2} built from the working tree (Spring Boot 4.1.1, nginx 1.30)
+Date    : 2026-10-18 (run duration 8m32s)
+Method  : in-cluster curl pod requests GET /api/products through the frontend Service/nginx every 50 ms
+          for 120 s while each release runs; every non-200 response counts as a failure.
+
+== 0. Fixtures: namespace, test database, connection secret
+ok   - fixtures ready (test DB on a persistent volume, secret generated at run time)
+== 1. Initial deployment (v1)
+ok   - v1 deployed, 20-check smoke test passed
+== 2. Rolling update v1 -> v2 under load
+ok   - rolling update v1->v2: 1898 requests, 0 failed
+== 3. Bad image release
+ok   - bad image detected (exit 1) and rolled back to v2
+ok   - bad image release + rollback: 1895 requests, 0 failed
+== 4. Failing readiness (new pods can never reach the database)
+ok   - unhealthy release detected (exit 1) and rolled back
+ok   - unhealthy release + rollback: 1964 requests, 0 failed
+== 5. Database outage
+ok   - outage: all backend pods removed from service, 0 restarts
+ok   - database restored: pods Ready again and API serving (data persisted on PVC)
+== 6. Pod loss
+ok   - deleted pod backend-7c7d48dc4d-lpv4f replaced; 2/2 backend pods Ready
+Helm history:
+REVISION  STATUS      DESCRIPTION
+4         failed      Upgrade "order-inventory" failed
+5         superseded  Rollback to 3
+6         failed      Upgrade "order-inventory" failed
+7         superseded  Rollback to 5
+8         superseded  Upgrade complete
+9         superseded  Upgrade complete
+10        failed      Upgrade "order-inventory" failed
+11        superseded  Rollback to 9
+12        failed      Upgrade "order-inventory" failed
+13        deployed    Rollback to 11
+All 10 acceptance checks passed
+
+Scope note: this proves the Kubernetes/Helm rollout and rollback behaviour. It does not exercise the AWS
+ALB (target registration/deregistration timing), which requires an EKS deployment.

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: order-inventory
+description: Order & Inventory Management System (React/nginx frontend + Spring Boot backend) with zero-downtime rolling updates
+type: application
+version: 1.0.0
+# Set per release to the immutable image tag (<build>-<commit>) by scripts/deploy-k8s.sh
+appVersion: "1.0.0"

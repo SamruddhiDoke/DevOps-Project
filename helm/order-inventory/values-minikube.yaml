@@ -1,0 +1,14 @@
+# Local cluster (minikube): images built locally and loaded with `minikube image load`; no ALB.
+image:
+  registry: local
+environment: minikube
+ingress:
+  enabled: false
+backend:
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { cpu: 500m, memory: 768Mi }
+frontend:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 128Mi }

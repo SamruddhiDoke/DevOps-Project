@@ -1,0 +1,59 @@
+# Defaults target Amazon EKS behind an ALB (AWS Load Balancer Controller).
+# Environment overrides: values-minikube.yaml. Per release: --set image.tag=<build>-<commit>.
+
+image:
+  # ECR registry, e.g. 123456789012.dkr.ecr.ap-south-1.amazonaws.com (set by scripts/deploy-k8s.sh)
+  registry: ""
+  # Immutable build tag; required (never "latest")
+  tag: ""
+  pullPolicy: IfNotPresent
+
+environment: aws
+
+# Non-sensitive configuration (rendered into the backend-config ConfigMap)
+config:
+  corsAllowedOrigins: "*"
+  logFormat: ecs        # ECS JSON logs for Filebeat/Elasticsearch; "" for plain text
+  javaOpts: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+
+# Database connection: an existing Secret with keys url, username, password
+# (created by scripts/create-db-secret.sh; values are never stored in the chart).
+database:
+  existingSecret: mysql-secret
+
+backend:
+  replicas: 2
+  repository: order-inventory-backend
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 1Gi }
+
+frontend:
+  replicas: 2
+  repository: order-inventory-frontend
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+# Zero-downtime rolling updates: add a new pod, wait for readiness, then retire an old one
+rollingUpdate:
+  maxUnavailable: 0
+  maxSurge: 1
+
+# Seconds pods keep serving after termination starts, so the ALB/Endpoints stop routing to them first
+preStopSleepSeconds: 10
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=20
