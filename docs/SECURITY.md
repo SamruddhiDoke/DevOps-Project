@@ -29,9 +29,12 @@ from `TF_VAR_db_password` with validation.
 1. Password removed from the configuration; state files untracked and ignored.
 2. Full backups taken before any rewrite: `Desktop\DevOps-Project-backups\` (remote mirror bundle,
    local pre-rewrite bundle, MySQL dump).
-3. History rewritten with `git filter-repo`: state files, `node_modules/`, `target/`, `dist/` and
-   `.terraform/` removed from every commit; the password literal replaced in all blobs.
-4. Rewritten history verified locally (no matches for the secret; gitleaks clean) before any push.
+3. History rewritten locally with `git filter-repo` (done 2026-10-18): state files, `node_modules/`,
+   `target/`, `dist/` and `.terraform/` removed from every commit; the password literal replaced in all
+   blobs. Rehearsed first on a disposable clone.
+4. Verified locally: secret occurrences 9 → 0 across all refs, 0 junk paths, current content byte-identical,
+   repository 170 MB → 0.4 MB, gitleaks full-history scan clean (two reviewed false positives in
+   `.gitleaksignore`).
 5. Force-push to `origin/main` only with the repository owner's explicit approval (it rewrites
    public history). After the push: verify with a fresh clone + gitleaks, and ask GitHub Support to
    purge cached views of the old commits if required. Forks/clones made before the rewrite may still

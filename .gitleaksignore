@@ -1,0 +1,5 @@
+# Reviewed false positives (gitleaks fingerprints). See docs/SECURITY.md.
+# ci/start-local-ci.sh (first version): curl -u with SonarQube's documented factory default admin:admin,
+# replaced at first start, and a run-time variable reference - not secrets. Fixed in a later commit.
+939b41a50ae4c2b0d0ab30ff4da72f98c8832249:ci/start-local-ci.sh:curl-auth-user:25
+939b41a50ae4c2b0d0ab30ff4da72f98c8832249:ci/start-local-ci.sh:curl-auth-user:38
