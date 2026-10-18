@@ -23,7 +23,22 @@ spec:
       labels: { app: elasticsearch }
     spec:
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
         fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        # Read-only root filesystem: copy the default config into a writable volume once
+        - name: copy-config
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
+          command: ["sh", "-c", "cp -a /usr/share/elasticsearch/config/. /config-rw/"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: config, mountPath: /config-rw }
       containers:
         - name: elasticsearch
           image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
@@ -33,6 +48,7 @@ spec:
             - { name: ES_JAVA_OPTS, value: "-Xms512m -Xmx512m" }
             # emptyDir on the node root volume: avoid read-only index blocks at the default 85-95 % watermarks
             - { name: cluster.routing.allocation.disk.threshold_enabled, value: "false" }
+            - { name: ES_TMPDIR, value: /tmp }
           ports:
             - containerPort: 9200
           readinessProbe:
@@ -43,12 +59,18 @@ spec:
             limits: { cpu: "1", memory: 1Gi }
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           volumeMounts:
             - { name: data, mountPath: /usr/share/elasticsearch/data }
+            - { name: config, mountPath: /usr/share/elasticsearch/config }
+            - { name: logs, mountPath: /usr/share/elasticsearch/logs }
+            - { name: tmp, mountPath: /tmp }
       volumes:
-        - name: data
-          emptyDir: {}
+        - { name: data, emptyDir: {} }
+        - { name: config, emptyDir: {} }
+        - { name: logs, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
 ---
 apiVersion: v1
 kind: Service
@@ -73,6 +95,12 @@ spec:
     metadata:
       labels: { app: kibana }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: kibana
           image: docker.elastic.co/kibana/kibana:8.19.5
@@ -90,7 +118,14 @@ spec:
             limits: { cpu: "1", memory: 1Gi }
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: data, mountPath: /usr/share/kibana/data }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: data, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
 ---
 apiVersion: v1
 kind: Service
@@ -204,6 +239,8 @@ spec:
           securityContext:
             runAsUser: 0
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"], add: ["DAC_READ_SEARCH"] }
           resources:
             requests: { cpu: 50m, memory: 100Mi }
             limits: { cpu: 500m, memory: 200Mi }
@@ -211,6 +248,7 @@ spec:
             - { name: config, mountPath: /etc/filebeat.yml, subPath: filebeat.yml, readOnly: true }
             - { name: config, mountPath: /usr/share/filebeat/ilm/ilm-policy.json, subPath: ilm-policy.json, readOnly: true }
             - { name: data, mountPath: /usr/share/filebeat/data }
+            - { name: tmp, mountPath: /tmp }
             - { name: varlogcontainers, mountPath: /var/log/containers, readOnly: true }
             - { name: varlogpods, mountPath: /var/log/pods, readOnly: true }
       volumes:
@@ -218,6 +256,7 @@ spec:
           configMap: { name: filebeat-config }
         - name: data
           hostPath: { path: /var/lib/filebeat-data, type: DirectoryOrCreate }
+        - { name: tmp, emptyDir: {} }
         - name: varlogcontainers
           hostPath: { path: /var/log/containers }
         - name: varlogpods

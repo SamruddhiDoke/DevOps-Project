@@ -1,0 +1,15 @@
+# Accepted Trivy misconfiguration findings (reviewed). Everything else fails CI.
+# Rationale per finding: docs/SECURITY.md "Accepted risks".
+misconfigurations:
+  - id: AVD-AWS-0040
+    statement: EKS public endpoint kept for admin kubectl; restricted to admin CIDRs, nodes/Jenkins use the private endpoint.
+  - id: AVD-AWS-0041
+    statement: Public endpoint limited to the administrator /32; 0.0.0.0/0 rejected by variable validation and a precondition.
+  - id: AVD-AWS-0104
+    statement: Unrestricted egress for Jenkins and the EKS control plane SG (package installs, ECR, GitHub, AWS APIs); ingress restricted.
+  - id: AVD-AWS-0132
+    statement: CI report bucket uses SSE-S3; reproducible build reports, private, TLS-only, 30-day expiry.
+  - id: KSV-0118
+    paths:
+      - "k8s/logging/elk.yaml"
+    statement: Filebeat must run as root to read the node's root-owned container log files (mounted read-only); all other workloads in this file run as non-root.

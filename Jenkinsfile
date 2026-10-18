@@ -173,7 +173,7 @@ pipeline {
 
                     # Terraform/Helm/Dockerfile misconfigurations. Accepted findings are listed with
                     # their justification in .trivyignore; anything new fails the build.
-                    trivy config --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore \
+                    trivy config --severity HIGH,CRITICAL --exit-code 1 --ignorefile .trivyignore.yaml \
                         --tf-vars terraform/environments/full.tfvars \
                         --skip-dirs '**/node_modules' --skip-dirs terraform/.terraform --skip-dirs k8s/testing \
                         --format table --output "${REPORTS}/trivy-iac.txt" .
