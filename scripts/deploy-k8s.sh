@@ -25,7 +25,9 @@ STATE_DIR="$REPO_ROOT/.deploy"
 mkdir -p "$STATE_DIR"
 
 [ "$TAG" != "latest" ] || { echo "Refusing to deploy the mutable tag 'latest'" >&2; exit 1; }
-kubectl get namespace "$NAMESPACE" >/dev/null || { echo "Namespace $NAMESPACE missing: kubectl apply -f k8s/namespace.yaml" >&2; exit 1; }
+# Namespace-scoped check (CI identities may lack cluster-scoped read access to Namespace objects)
+[ "$(kubectl auth can-i create deployments -n "$NAMESPACE" 2>/dev/null)" = yes ] \
+  || { echo "Cannot deploy to namespace $NAMESPACE (missing? kubectl apply -f k8s/namespace.yaml; or no RBAC)" >&2; exit 1; }
 
 # Database connection secret (chart value database.existingSecret, default mysql-secret)
 kubectl -n "$NAMESPACE" get secret "${DB_SECRET:-mysql-secret}" >/dev/null \
