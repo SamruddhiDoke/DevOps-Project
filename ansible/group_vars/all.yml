@@ -1,0 +1,14 @@
+# Tool versions: keep in sync with ci/jenkins/Dockerfile so the local CI controller and the
+# EC2 Jenkins server build with identical toolchains.
+maven_version: "3.9.12"
+node_version: "24.22.0"
+trivy_version: "0.76.0"
+helm_version: "4.3.1"
+kubectl_version: "1.36.5"
+terraform_version: "1.15.8"
+sonar_scanner_version: "8.1.0.6389"
+
+jenkins_port: 8080
+
+# Set false in container-based test runs where the Docker daemon cannot be started
+docker_start_service: true

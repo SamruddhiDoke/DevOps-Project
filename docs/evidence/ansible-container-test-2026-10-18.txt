@@ -1,0 +1,43 @@
+== ansible version
+ansible [core 2.21.5]
+== syntax check
+
+playbook: playbooks/jenkins.yml
+== ansible-lint
+
+Passed: 0 failure(s), 0 warning(s) in 8 files processed of 8 encountered. Last profile that met the validation criteria was 'production'.
+== apply (first run)
+ok: [localhost] => (item=kubectl version --client)
+ok: [localhost] => (item=terraform -version)
+ok: [localhost] => (item=sonar-scanner -v)
+ok: [localhost] => (item=aws --version)
+ok: [localhost] => (item=docker --version)
+
+TASK [Show toolchain] **********************************************************
+ok: [localhost] => {
+    "msg": [
+        "openjdk version \"21.0.12.1\" 2026-08-18",
+        "Apache Maven 3.9.12 (848fbb4bf2d427b72bdb2471c22fced7ebd9a7a1)",
+        "v24.22.0",
+        "Version: 0.76.0",
+        "v4.3.1+gc0d08d0",
+        "Client Version: v1.36.5",
+        "Terraform v1.15.8",
+        "16:34:27.101 INFO  Scanner configuration file: /opt/sonar-scanner-8.1.0.6389-linux-x64/conf/sonar-scanner.properties",
+        "aws-cli/2.38.1 Python/3.14.6 Linux/6.6.114.1-microsoft-standard-WSL2 exe/x86_64.ubuntu.24",
+        "Docker version 29.1.3, build 29.1.3-0ubuntu3~24.04.2"
+    ]
+}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=29   changed=21   unreachable=0    failed=0    skipped=1    rescued=0    ignored=0   
+
+== idempotency (second run must change nothing)
+PLAY RECAP *********************************************************************
+localhost                  : ok=18   changed=0    unreachable=0    failed=0    skipped=10   rescued=0    ignored=0   
+
+== service health
+active
+jenkins /login HTTP 200
+Ansible test passed
+exit=0

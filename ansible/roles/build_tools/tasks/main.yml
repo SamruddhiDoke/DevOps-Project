@@ -1,0 +1,109 @@
+---
+# Each tool is installed from its official release at the pinned version (group_vars/all.yml).
+# Idempotent: a tool is downloaded only when the requested version is not already installed.
+
+- name: Install JDK 21 (runs Jenkins; compiles the Java 17 backend via --release)
+  ansible.builtin.apt:
+    name: openjdk-21-jdk-headless
+    state: present
+
+- name: Install Maven
+  ansible.builtin.unarchive:
+    src: "https://archive.apache.org/dist/maven/maven-3/{{ maven_version }}/binaries/apache-maven-{{ maven_version }}-bin.tar.gz"
+    dest: "{{ build_tools_dir }}"
+    remote_src: true
+    creates: "{{ build_tools_dir }}/apache-maven-{{ maven_version }}/bin/mvn"
+
+- name: Install Node.js
+  ansible.builtin.unarchive:
+    src: "https://nodejs.org/dist/v{{ node_version }}/node-v{{ node_version }}-linux-x64.tar.xz"
+    dest: "{{ build_tools_dir }}"
+    remote_src: true
+    creates: "{{ build_tools_dir }}/node-v{{ node_version }}-linux-x64/bin/node"
+
+- name: Install SonarScanner CLI
+  ansible.builtin.unarchive:
+    src: "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-{{ sonar_scanner_version }}-linux-x64.zip"
+    dest: "{{ build_tools_dir }}"
+    remote_src: true
+    creates: "{{ build_tools_dir }}/sonar-scanner-{{ sonar_scanner_version }}-linux-x64/bin/sonar-scanner"
+
+- name: Link Maven, Node and SonarScanner binaries
+  ansible.builtin.file:
+    src: "{{ item.src }}"
+    dest: "/usr/local/bin/{{ item.name }}"
+    state: link
+    force: true
+  loop:
+    - { name: mvn, src: "{{ build_tools_dir }}/apache-maven-{{ maven_version }}/bin/mvn" }
+    - { name: node, src: "{{ build_tools_dir }}/node-v{{ node_version }}-linux-x64/bin/node" }
+    - { name: npm, src: "{{ build_tools_dir }}/node-v{{ node_version }}-linux-x64/bin/npm" }
+    - { name: npx, src: "{{ build_tools_dir }}/node-v{{ node_version }}-linux-x64/bin/npx" }
+    - { name: sonar-scanner, src: "{{ build_tools_dir }}/sonar-scanner-{{ sonar_scanner_version }}-linux-x64/bin/sonar-scanner" }
+
+- name: Check installed versions of single-binary tools
+  ansible.builtin.shell: "set -o pipefail; {{ item.check }} 2>/dev/null | grep -qF {{ item.version | quote }}"
+  args:
+    executable: /bin/bash
+  loop:
+    - { name: trivy, version: "{{ trivy_version }}", check: "trivy --version" }
+    - { name: helm, version: "{{ helm_version }}", check: "helm version --short" }
+    - { name: kubectl, version: "{{ kubectl_version }}", check: "kubectl version --client" }
+    - { name: terraform, version: "{{ terraform_version }}", check: "terraform -version" }
+  loop_control:
+    label: "{{ item.name }}"
+  register: build_tools_binary_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Trivy
+  ansible.builtin.unarchive:
+    src: "https://github.com/aquasecurity/trivy/releases/download/v{{ trivy_version }}/trivy_{{ trivy_version }}_Linux-64bit.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [trivy]
+  when: build_tools_binary_check.results[0].rc != 0
+
+- name: Install Helm
+  ansible.builtin.unarchive:
+    src: "https://get.helm.sh/helm-v{{ helm_version }}-linux-amd64.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [linux-amd64/helm]
+    extra_opts: [--strip-components=1]
+  when: build_tools_binary_check.results[1].rc != 0
+
+- name: Install kubectl
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/v{{ kubectl_version }}/bin/linux/amd64/kubectl"
+    dest: /usr/local/bin/kubectl
+    mode: "0755"
+    force: true
+  when: build_tools_binary_check.results[2].rc != 0
+
+- name: Install Terraform
+  ansible.builtin.unarchive:
+    src: "https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_linux_amd64.zip"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [terraform]
+  when: build_tools_binary_check.results[3].rc != 0
+
+- name: Check AWS CLI v2
+  ansible.builtin.command: /usr/local/bin/aws --version
+  register: build_tools_aws_check
+  changed_when: false
+  failed_when: false
+
+- name: Download AWS CLI v2
+  ansible.builtin.unarchive:
+    src: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+    dest: /tmp
+    remote_src: true
+  when: build_tools_aws_check.rc != 0
+
+- name: Install AWS CLI v2
+  ansible.builtin.command: /tmp/aws/install
+  args:
+    creates: /usr/local/bin/aws
+  when: build_tools_aws_check.rc != 0

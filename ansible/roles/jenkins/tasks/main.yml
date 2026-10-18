@@ -1,0 +1,44 @@
+---
+- name: Add Jenkins LTS apt repository (deb822 format, signing key pinned to this repository)
+  ansible.builtin.deb822_repository:
+    name: jenkins
+    types: deb
+    uris: https://pkg.jenkins.io/debian-stable
+    suites: binary/
+    signed_by: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
+    state: present
+
+- name: Install Jenkins LTS
+  ansible.builtin.apt:
+    name: jenkins
+    state: present
+    update_cache: true
+
+- name: Allow Jenkins builds to use Docker
+  ansible.builtin.user:
+    name: jenkins
+    groups: docker
+    append: true
+  notify: Restart jenkins
+
+- name: Ensure Jenkins is enabled and running
+  ansible.builtin.service:
+    name: jenkins
+    state: started
+    enabled: true
+
+- name: Apply pending Jenkins restarts before health checks
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the Jenkins web UI
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ jenkins_port }}/login"
+    status_code: 200
+  register: jenkins_ui
+  retries: 30
+  delay: 10
+  until: jenkins_ui.status == 200
+
+- name: Explain how to unlock Jenkins (the password stays on the server)
+  ansible.builtin.debug:
+    msg: "Jenkins is up. Unlock it with: sudo cat /var/lib/jenkins/secrets/initialAdminPassword"

@@ -1,0 +1,35 @@
+---
+# Configure the Jenkins CI server created by Terraform (Ubuntu 24.04).
+#   ansible-playbook playbooks/jenkins.yml            # apply
+#   ansible-playbook playbooks/jenkins.yml --check    # dry run
+- name: Configure Jenkins CI server
+  hosts: jenkins
+  become: true
+  roles:
+    - common
+    - docker
+    - build_tools
+    - jenkins
+
+  post_tasks:
+    - name: Verify toolchain versions (first line of each version banner; java prints to stderr)
+      ansible.builtin.shell: "set -o pipefail; {{ item }} 2>&1 | head -n 1"
+      args:
+        executable: /bin/bash
+      loop:
+        - java -version
+        - mvn -v
+        - node -v
+        - trivy -v
+        - helm version --short
+        - kubectl version --client
+        - terraform -version
+        - sonar-scanner -v
+        - aws --version
+        - docker --version
+      changed_when: false
+      register: tool_versions
+
+    - name: Show toolchain
+      ansible.builtin.debug:
+        msg: "{{ tool_versions.results | map(attribute='stdout') | list }}"

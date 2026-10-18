@@ -1,0 +1,12 @@
+---
+- name: Install Docker engine
+  ansible.builtin.apt:
+    name: docker.io
+    state: present
+
+- name: Ensure Docker is enabled and running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  when: docker_start_service | bool
