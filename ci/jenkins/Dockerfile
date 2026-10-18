@@ -14,7 +14,7 @@ ARG SONAR_SCANNER_VERSION=8.1.0.6389
 USER root
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl unzip git docker.io jq \
+ && apt-get install -y --no-install-recommends ca-certificates curl unzip xz-utils git docker-cli jq \
  && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \

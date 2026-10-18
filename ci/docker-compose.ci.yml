@@ -17,11 +17,7 @@ services:
     volumes:
       - sonarqube-data:/opt/sonarqube/data
       - sonarqube-extensions:/opt/sonarqube/extensions
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
-      interval: 10s
-      timeout: 5s
-      retries: 60
+    # No healthcheck: the image has no curl/wget. start-local-ci.sh waits on /api/system/status.
 
   jenkins:
     build: ./jenkins
@@ -46,8 +42,7 @@ services:
       - ..:/repo:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      sonarqube:
-        condition: service_healthy
+      - sonarqube
 
 volumes:
   jenkins-home:
