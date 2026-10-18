@@ -1,10 +1,10 @@
-<<<<<<< HEAD
 # =========================================================
 # IDE / Editor
 # =========================================================
 .idea/
 .vscode/
 *.iml
+.claude/settings.local.json
 
 # =========================================================
 # OS
@@ -15,33 +15,27 @@ Thumbs.db
 # =========================================================
 # Environment / Secrets
 # =========================================================
-=======
-# Frontend
-frontend/node_modules/
-frontend/dist/
-
-# Backend
-backend/target/
-
-# Environment files
->>>>>>> 7d3cb1e4ee1eac82ff0351fd9f421658328b2945
 .env
 .env.*
 !.env.example
 
-<<<<<<< HEAD
 *.pem
 *.key
 *.crt
 *.p12
 *.jks
 
+# Spring Boot local config
+**/application-local.properties
+**/application-local.yml
+
 # =========================================================
 # Node / React / Vite
 # =========================================================
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+**/node_modules/
+**/frontend/dist/
+**/frontend/.vite/
+**/frontend/coverage/
 
 npm-debug.log*
 yarn-debug.log*
@@ -50,23 +44,30 @@ yarn-error.log*
 # =========================================================
 # Java / Maven / Spring Boot
 # =========================================================
-backend/target/
+**/backend/target/
 *.class
 
 # =========================================================
 # Terraform
 # =========================================================
-.terraform/
+**/.terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
+tfplan
 crash.log
 crash.*.log
-**/.terraform/
 *.exe
 
-# Terraform variable files may contain secrets
+# Terraform variable files may contain secrets.
+# terraform.tfvars in this repo holds only non-sensitive network/region values;
+# secrets (db_password, alert_email) are passed via TF_VAR_* environment variables.
 *.tfvars
 *.tfvars.json
+!terraform/terraform.tfvars
+!terraform/environments/*.tfvars
+!*.tfvars.example
+backend.hcl
 
 # Terraform override files
 override.tf
@@ -79,26 +80,15 @@ override.tf.json
 terraform.rc
 
 # =========================================================
-# Logs
+# Logs / temporary files
 # =========================================================
 *.log
-
-# =========================================================
-# Temporary files
-# =========================================================
 *.tmp
 *.temp
-=======
-# Spring Boot local config
-**/application-local.properties
-**/application-local.yml
 
-# IDE
-.idea/
-.vscode/
-*.iml
+# Deploy state written by scripts/deploy-k8s.sh
+.deploy/
 
-# OS
-.DS_Store
-Thumbs.db
->>>>>>> 7d3cb1e4ee1eac82ff0351fd9f421658328b2945
+# CI reports and local CI secrets
+reports/
+ci/.env

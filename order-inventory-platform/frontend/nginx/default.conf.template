@@ -1,0 +1,63 @@
+# Rendered at container start by the nginx image's envsubst entrypoint.
+# Only variables defined in the environment are substituted (BACKEND_URL, NGINX_LOCAL_RESOLVERS);
+# nginx runtime variables such as $uri are left untouched.
+
+# Access log including the request id that is also forwarded to (and logged by) the backend
+log_format with_request_id '$remote_addr - [$time_local] "$request" $status $body_bytes_sent '
+                           '$request_time rid=$request_id "$http_user_agent"';
+
+server {
+    access_log /var/log/nginx/access.log with_request_id;
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    server_tokens off;
+
+    # Resolve the backend at request time (not only at startup) so the frontend keeps
+    # running while the backend is restarting, and picks up new Service/container IPs.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    include /etc/nginx/snippets/security-headers.conf;
+
+    # Container / Kubernetes probe endpoint (does not depend on the backend)
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Same-origin API: forward /api/* to the Spring Boot backend.
+    # On EKS the ALB Ingress routes /api directly to the backend; this keeps Docker Compose,
+    # port-forwarding and any Ingress-less setup working with the same frontend build.
+    location /api/ {
+        set $backend_upstream ${BACKEND_URL};
+        proxy_pass $backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 30s;
+    }
+
+    # Fingerprinted build assets can be cached aggressively
+    location /assets/ {
+        expires 1y;
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "public, immutable" always;
+        try_files $uri =404;
+    }
+
+    # React Router SPA fallback; never cache index.html so new deployments load immediately
+    location / {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri $uri/ /index.html;
+    }
+}

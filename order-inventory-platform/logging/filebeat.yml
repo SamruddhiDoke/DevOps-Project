@@ -1,0 +1,44 @@
+# Ships the application containers' stdout/stderr to Elasticsearch.
+# Backend lines are ECS JSON (LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs) and are decoded into fields;
+# nginx/MySQL lines are stored as plain messages.
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      templates:
+        - condition:
+            or:
+              - equals.docker.container.name: inventory-backend
+              - equals.docker.container.name: inventory-frontend
+              - equals.docker.container.name: inventory-mysql
+          config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/${data.docker.container.id}/*.log
+
+processors:
+  - decode_json_fields:
+      fields: ["message"]
+      target: ""
+      overwrite_keys: true
+      add_error_key: false
+      when:
+        regexp:
+          message: '^\{'
+  - add_fields:
+      target: ""
+      fields:
+        app: order-inventory
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+
+# Retention: logs are deleted after 7 days (see ilm-policy.json)
+setup.ilm.enabled: true
+setup.ilm.policy_name: order-inventory-logs
+setup.ilm.policy_file: /usr/share/filebeat/ilm-policy.json
+setup.ilm.overwrite: true
+
+setup.kibana:
+  host: "http://kibana:5601"
+
+logging.level: warning

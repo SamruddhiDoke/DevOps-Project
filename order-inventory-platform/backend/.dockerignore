@@ -1,0 +1,24 @@
+# Git
+.git
+.gitignore
+
+# Maven
+target/
+*.class
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Documentation
+README.md

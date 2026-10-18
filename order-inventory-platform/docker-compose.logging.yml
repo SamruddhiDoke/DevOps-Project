@@ -1,0 +1,67 @@
+# Optional ELK overlay for centralized application/container logs (local / demo use).
+#   docker compose -f docker-compose.yml -f docker-compose.logging.yml up -d
+#   Kibana: http://localhost:5601  -> Discover -> data view "filebeat-*"
+# Needs ~2 GB RAM for Docker. Security is disabled and ports bind to 127.0.0.1 only:
+# do NOT expose this configuration on a network.
+
+services:
+
+  backend:
+    environment:
+      # One ECS JSON document per log line, decoded by Filebeat
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
+    container_name: inventory-elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - inventory-es-data:/usr/share/elasticsearch/data
+    networks:
+      - inventory-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.19.5
+    container_name: inventory-kibana
+    restart: unless-stopped
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - inventory-network
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.19.5
+    container_name: inventory-filebeat
+    restart: unless-stopped
+    # Root is required to read other containers' log files and the Docker socket (read-only mounts)
+    user: root
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    volumes:
+      - ./logging/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./logging/ilm-policy.json:/usr/share/filebeat/ilm-policy.json:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - inventory-network
+
+volumes:
+  inventory-es-data:

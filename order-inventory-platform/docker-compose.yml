@@ -1,0 +1,82 @@
+# Local full-stack environment: MySQL + Spring Boot backend + React/nginx frontend.
+#   cp .env.example .env      # optional: override credentials/ports
+#   docker compose up -d --build
+#   open http://localhost:3000
+# Values below fall back to local-development defaults when .env is absent.
+
+services:
+
+  mysql:
+    image: mysql:8.4
+    container_name: inventory-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_local_dev}
+      MYSQL_DATABASE: order_inventory_db
+      # Least-privilege application account (granted access to order_inventory_db only)
+      MYSQL_USER: ${DB_USER:-inventory}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-inventory_local_dev}
+    ports:
+      - "${MYSQL_HOST_PORT:-3307}:3306"
+    volumes:
+      # Persistent data. Never delete it as routine cleanup (`docker compose down` keeps it).
+      - inventory-mysql-data:/var/lib/mysql
+    networks:
+      - inventory-network
+    healthcheck:
+      # mysqladmin ping exits 0 whenever the server answers, so no credentials are needed here
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+    image: inventory-backend:${IMAGE_TAG:-local}
+    container_name: inventory-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_HOST_PORT:-8080}:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/order_inventory_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-inventory}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-inventory_local_dev}
+      # Flyway creates/migrates the schema on startup; db/seed adds demo data to an EMPTY database only
+      SPRING_FLYWAY_LOCATIONS: classpath:db/migration,classpath:db/seed
+      APP_ENVIRONMENT: local
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - inventory-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  frontend:
+    build:
+      context: ./frontend
+    image: inventory-frontend:${IMAGE_TAG:-local}
+    container_name: inventory-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_HOST_PORT:-3000}:8080"
+    environment:
+      BACKEND_URL: http://backend:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - inventory-network
+
+networks:
+  inventory-network:
+    driver: bridge
+
+volumes:
+  inventory-mysql-data:
